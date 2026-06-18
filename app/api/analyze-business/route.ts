@@ -1,11 +1,4 @@
-import Anthropic from "@anthropic-ai/sdk"
-import { NextRequest } from "next/server"
-
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-})
-
-export const runtime = "edge"
+import { NextRequest, NextResponse } from "next/server"
 
 export async function POST(req: NextRequest) {
   try {
@@ -17,7 +10,7 @@ Analiza este negocio y genera un perfil completo:
 
 "${description}"
 
-Responde ÚNICAMENTE en JSON con este formato exacto:
+Responde ÚNICAMENTE en JSON con este formato exacto, sin texto adicional:
 {
   "businessName": "nombre del negocio",
   "industry": "industria",
@@ -34,21 +27,34 @@ Responde ÚNICAMENTE en JSON con este formato exacto:
   "estimatedCPL": "rango estimado de costo por lead en COP"
 }`
 
-    const response = await anthropic.messages.create({
-      model: "claude-sonnet-4-6",
-      max_tokens: 1500,
-      messages: [{ role: "user", content: prompt }],
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": process.env.ANTHROPIC_API_KEY!,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-6",
+        max_tokens: 1500,
+        messages: [{ role: "user", content: prompt }],
+      }),
     })
 
-    const content = response.content[0]
-    if (content.type !== "text") throw new Error("Invalid response")
+    if (!response.ok) {
+      const err = await response.text()
+      console.error("Anthropic API error:", err)
+      throw new Error("Anthropic API error")
+    }
 
-    const cleanJson = content.text.replace(/```json\n?|\n?```/g, "").trim()
+    const result = await response.json()
+    const text = result.content[0].text
+    const cleanJson = text.replace(/```json\n?|\n?```/g, "").trim()
     const data = JSON.parse(cleanJson)
 
-    return Response.json(data)
+    return NextResponse.json(data)
   } catch (error) {
     console.error("Error analizando negocio:", error)
-    return Response.json({ error: "Error al analizar el negocio" }, { status: 500 })
+    return NextResponse.json({ error: "Error al analizar el negocio" }, { status: 500 })
   }
 }
