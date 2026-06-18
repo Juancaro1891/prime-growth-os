@@ -1,0 +1,13 @@
+{
+  "/automation/page": "app/automation/page.js",
+  "/dashboard/page": "app/dashboard/page.js",
+  "/landings/page": "app/landings/page.js",
+  "/analytics/page": "app/analytics/page.js",
+  "/dashboard-layout/campaigns/page": "app/dashboard-layout/campaigns/page.js",
+  "/dashboard-layout/whatsapp/page": "app/dashboard-layout/whatsapp/page.js",
+  "/dashboard-layout/crm/page": "app/dashboard-layout/crm/page.js",
+  "/dashboard-layout/automation/page": "app/dashboard-layout/automation/page.js",
+  "/dashboard-layout/dashboard/page": "app/dashboard-layout/dashboard/page.js",
+  "/dashboard-layout/landings/page": "app/dashboard-layout/landings/page.js",
+  "/dashboard-layout/analytics/page": "app/dashboard-layout/analytics/page.js"
+}
