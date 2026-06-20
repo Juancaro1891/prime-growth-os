@@ -32,14 +32,15 @@ export default function ImagesPage() {
         body: JSON.stringify({ prompt, size, style }),
       })
 
-      if (!response.ok) throw new Error("Error al generar")
       const data = await response.json()
-      if (data.error) throw new Error(data.error)
+      if (!response.ok || data.error) {
+        throw new Error(data.details || data.error || "Error al generar la imagen")
+      }
 
       setImageUrl(data.url)
       setRevisedPrompt(data.revisedPrompt || "")
-    } catch {
-      setError("Hubo un error generando la imagen. Intenta de nuevo.")
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Hubo un error generando la imagen. Intenta de nuevo.")
     } finally {
       setGenerating(false)
     }
