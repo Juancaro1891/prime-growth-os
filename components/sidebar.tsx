@@ -9,6 +9,7 @@ const navItems = [
   { label: "Estrategia de Campaña", href: "/strategy", icon: "🎯" },
   { label: "Campañas", href: "/campaigns", icon: "📣" },
   { label: "Creativos & Copies", href: "/creatives", icon: "✍️" },
+  { label: "Imágenes IA", href: "/images", icon: "🎨" },
   { label: "Landings", href: "/landings", icon: "🏗️" },
   { label: "WhatsApp AI", href: "/whatsapp", icon: "💚" },
   { label: "CRM", href: "/crm", icon: "👥" },

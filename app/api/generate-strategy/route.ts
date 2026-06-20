@@ -43,7 +43,7 @@ Reglas:
       },
       body: JSON.stringify({
         model: "claude-sonnet-4-6",
-        max_tokens: 1800,
+        max_tokens: 3000,
         messages: [{ role: "user", content: prompt }],
       }),
     })
@@ -55,9 +55,40 @@ Reglas:
     }
 
     const result = await response.json()
-    const text = result.content[0].text
+
+    if (result.stop_reason === "max_tokens") {
+      console.error("Anthropic cortó la respuesta por max_tokens, el JSON puede venir incompleto")
+    }
+
+    const text = result.content?.[0]?.text
+    if (!text) {
+      console.error("Respuesta de Anthropic sin contenido de texto:", JSON.stringify(result))
+      throw new Error("Respuesta de Anthropic sin contenido")
+    }
+
     const cleanJson = text.replace(/```json\n?|\n?```/g, "").trim()
-    const data = JSON.parse(cleanJson)
+
+    let data
+    try {
+      data = JSON.parse(cleanJson)
+    } catch (parseError) {
+      console.error("Fallo el JSON.parse directo:", parseError)
+      console.error("Texto crudo devuelto por Claude:", text)
+
+      const match = cleanJson.match(/\{[\s\S]*\}/)
+      if (!match) {
+        console.error("No se encontró ningún objeto JSON dentro del texto")
+        throw new Error("Claude no devolvió JSON válido")
+      }
+
+      try {
+        data = JSON.parse(match[0])
+      } catch (fallbackError) {
+        console.error("Fallo también el JSON.parse del fallback con regex:", fallbackError)
+        console.error("Substring que se intentó parsear:", match[0])
+        throw new Error("Claude no devolvió JSON válido")
+      }
+    }
 
     return NextResponse.json(data)
   } catch (error) {

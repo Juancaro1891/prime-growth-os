@@ -12,6 +12,7 @@ const sourceColors: Record<string, string> = {
   "TikTok": "bg-gray-500/20 text-gray-300",
   "Referido": "bg-violet-500/20 text-violet-300",
   "Landing": "bg-indigo-500/20 text-indigo-300",
+  "Formulario Web": "bg-cyan-500/20 text-cyan-300",
   "Manual": "bg-gray-500/20 text-gray-400",
 }
 
@@ -360,7 +361,7 @@ export default function CRMPage() {
                   onChange={(e) => setForm({ ...form, source: e.target.value })}
                   className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white text-sm outline-none focus:border-violet-500/50"
                 >
-                  {["Manual", "Meta Ads", "Google", "Instagram", "TikTok", "WhatsApp", "Referido", "Landing"].map((s) => (
+                  {["Manual", "Meta Ads", "Google", "Instagram", "TikTok", "WhatsApp", "Referido", "Landing", "Formulario Web"].map((s) => (
                     <option key={s} value={s} className="bg-[#111118]">{s}</option>
                   ))}
                 </select>
