@@ -43,11 +43,19 @@ const referenceSlots: { key: number; label: string; icon: string; desc: string }
   { key: 2, label: "En acción", icon: "✨", desc: "Tu equipo o servicio en uso" },
 ]
 
+const imageLoadingMessages = [
+  "🎨 Analizando el estilo visual de tu marca...",
+  "📸 Componiendo la imagen publicitaria...",
+  "✨ Aplicando los elementos de tu campaña...",
+  "🔍 Refinando los detalles finales...",
+  "🚀 ¡Casi listo! Últimos toques...",
+]
+
 function buildImagePrompt(suggestion: Suggestion, hasLogo: boolean) {
   let prompt = `Fotografía publicitaria profesional para una campaña de marketing en redes sociales. Mensaje del anuncio: "${suggestion.copy}". Audiencia objetivo: ${suggestion.audience || "público general"}. Sin texto superpuesto, estética atractiva y realista, calidad de anuncio publicitario profesional para Instagram y Facebook.`
 
   if (hasLogo) {
-    prompt += " Incorpora el logo de la marca de forma visible y legible en la esquina inferior derecha de la imagen, en un tamaño notorio pero sin tapar el producto ni el mensaje principal del anuncio. El logo debe integrarse de forma natural en la composición general, como parte del diseño del anuncio (no como una marca de agua pegada encima), manteniendo el mismo look profesional de publicidad para redes sociales que el resto de la imagen."
+    prompt += " Integra el logo que se proporciona como imagen de referencia en la esquina inferior derecha. Si el logo tiene fondo blanco o de color sólido que contraste con la imagen, elimínalo para que se integre de forma natural. Si el logo ya tiene fondo transparente o es parte de un diseño completo, úsalo tal como está. En ambos casos respeta exactamente los colores, tipografía y forma del logo original."
   } else {
     prompt += " Sin logos ni marcas visibles."
   }
@@ -258,6 +266,20 @@ function LaunchWizardModal({
   const [aiGenerating, setAiGenerating] = useState(false)
   const [aiError, setAiError] = useState("")
   const [lightboxImage, setLightboxImage] = useState<string | null>(null)
+  const [imagePromptText, setImagePromptText] = useState("")
+  const [showPromptEditor, setShowPromptEditor] = useState(false)
+  const [loadingMessageIndex, setLoadingMessageIndex] = useState(0)
+
+  useEffect(() => {
+    if (!aiGenerating) {
+      setLoadingMessageIndex(0)
+      return
+    }
+    const interval = setInterval(() => {
+      setLoadingMessageIndex((i) => (i + 1) % imageLoadingMessages.length)
+    }, 5000)
+    return () => clearInterval(interval)
+  }, [aiGenerating])
 
   const [uploads, setUploads] = useState<Record<UploadSlotKey, UploadValue>>({ feed: null, stories: null, banner: null })
   const uploadsRef = useRef(uploads)
@@ -290,14 +312,15 @@ function LaunchWizardModal({
     setAiImages([])
     setSelectedAiImage(null)
     try {
-      const prompt = buildImagePrompt(suggestion, !!logo)
+      const prompt = imagePromptText || buildImagePrompt(suggestion, !!logo)
       const imagePrompt = referencePhoto ? await fileToDataUrl(referencePhoto.file) : undefined
+      const logoPrompt = logo ? await fileToDataUrl(logo.file) : undefined
       const results = await Promise.all(
         [0, 1].map(() =>
           fetch("/api/generate-image", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ prompt, size: "1024x1024", style: "Fotorrealista", imagePrompt }),
+            body: JSON.stringify({ prompt, size: "1024x1024", style: "Fotorrealista", imagePrompt, logoPrompt }),
           }).then(async (r) => ({ ok: r.ok, data: await r.json().catch(() => null) }))
         )
       )
@@ -472,7 +495,7 @@ function LaunchWizardModal({
             <p className="text-gray-500 text-xs mt-3">Formatos: JPG, PNG. Máximo 5MB cada una.</p>
 
             <button
-              onClick={() => setAiPhase("generate")}
+              onClick={() => { setImagePromptText(buildImagePrompt(suggestion, !!logo)); setAiPhase("generate") }}
               className="w-full py-3 mt-4 bg-violet-600 hover:bg-violet-700 text-white font-medium rounded-xl transition-all active:scale-95"
             >
               {referencePhoto || logo ? "Continuar con estas fotos" : "Continuar sin fotos"}
@@ -482,31 +505,49 @@ function LaunchWizardModal({
           <div>
             <button onClick={() => setAiPhase("customize")} className="text-gray-500 hover:text-white text-xs mb-3 transition-colors">← Volver a personalizar</button>
 
-            <p className="text-gray-500 text-xs mb-1">Prompt que usaremos</p>
-            <div className="bg-black/20 border border-white/10 rounded-xl p-3 text-gray-300 text-sm mb-4 leading-relaxed">
-              {buildImagePrompt(suggestion, !!logo)}
-            </div>
-            {referencePhoto && (
-              <div className="flex items-center gap-2 mb-4">
-                <img src={referencePhoto.previewUrl} alt="Foto de referencia" className="w-10 h-10 object-cover rounded-lg" />
-                <p className="text-gray-500 text-xs">También usaremos esta foto como guía visual del estilo.</p>
-              </div>
-            )}
-
             {aiImages.length === 0 && (
-              <button
-                onClick={handleGenerateImages}
-                disabled={aiGenerating}
-                className="w-full py-3 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white font-medium rounded-xl transition-all active:scale-95 flex items-center justify-center gap-2"
-              >
-                {aiGenerating ? (
-                  <>
-                    <Spinner /> Generando imágenes...
-                  </>
-                ) : (
-                  "Generar imágenes"
+              <>
+                <p className="text-gray-500 text-xs mb-1">Prompt que usaremos (puedes editarlo)</p>
+                <textarea
+                  value={imagePromptText}
+                  onChange={(e) => setImagePromptText(e.target.value)}
+                  rows={5}
+                  disabled={aiGenerating}
+                  className="w-full bg-black/20 border border-white/10 rounded-xl p-3 text-gray-200 text-sm leading-relaxed outline-none focus:border-violet-500/50 transition-colors resize-none mb-4 disabled:opacity-60"
+                />
+                {referencePhoto && (
+                  <div className="flex items-center gap-2 mb-4">
+                    <img src={referencePhoto.previewUrl} alt="Foto de referencia" className="w-10 h-10 object-cover rounded-lg" />
+                    <p className="text-gray-500 text-xs">También usaremos esta foto como guía visual del estilo.</p>
+                  </div>
                 )}
-              </button>
+
+                {!aiGenerating && (
+                  <p className="text-amber-200/80 text-xs bg-amber-500/10 border border-amber-500/20 rounded-xl p-3 mb-3 leading-relaxed">
+                    ⏳ La generación de tu imagen publicitaria profesional puede tomar entre 1 y 3 minutos. Nuestra IA está analizando tu marca, el copy de la campaña y las referencias visuales para crear un creativo único y personalizado. ¡Vale la pena esperar!
+                  </p>
+                )}
+
+                <button
+                  onClick={handleGenerateImages}
+                  disabled={aiGenerating || !imagePromptText.trim()}
+                  className="w-full py-3 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white font-medium rounded-xl transition-all active:scale-95 flex items-center justify-center gap-2"
+                >
+                  {aiGenerating ? (
+                    <>
+                      <Spinner /> Generando imágenes...
+                    </>
+                  ) : (
+                    "Generar imágenes"
+                  )}
+                </button>
+
+                {aiGenerating && (
+                  <div className="mt-3 bg-violet-600/10 border border-violet-500/20 rounded-xl p-3 text-center">
+                    <p className="text-violet-200 text-sm">{imageLoadingMessages[loadingMessageIndex]}</p>
+                  </div>
+                )}
+              </>
             )}
 
             {aiError && <p className="text-red-400 text-xs mt-2">{aiError}</p>}
@@ -538,6 +579,23 @@ function LaunchWizardModal({
                   ))}
                 </div>
                 <p className="text-gray-500 text-xs mt-2">Click en una imagen para verla en tamaño completo.</p>
+
+                <button
+                  onClick={() => setShowPromptEditor((v) => !v)}
+                  className="text-violet-300 hover:text-violet-200 text-xs font-medium mt-3 transition-colors"
+                >
+                  ✏️ Ajustar prompt
+                </button>
+
+                {showPromptEditor && (
+                  <textarea
+                    value={imagePromptText}
+                    onChange={(e) => setImagePromptText(e.target.value)}
+                    rows={5}
+                    className="w-full bg-black/20 border border-white/10 rounded-xl p-3 text-gray-200 text-sm leading-relaxed outline-none focus:border-violet-500/50 transition-colors resize-none mt-2"
+                  />
+                )}
+
                 <div className="flex gap-2 mt-4">
                   <button
                     onClick={() => setStep(3)}
@@ -548,7 +606,7 @@ function LaunchWizardModal({
                   </button>
                   <button
                     onClick={handleGenerateImages}
-                    disabled={aiGenerating}
+                    disabled={aiGenerating || !imagePromptText.trim()}
                     className="px-4 py-2.5 bg-white/5 hover:bg-white/10 border border-white/10 disabled:opacity-50 text-gray-300 text-sm font-medium rounded-xl transition-all"
                   >
                     Regenerar
