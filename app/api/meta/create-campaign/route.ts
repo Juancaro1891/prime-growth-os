@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@clerk/nextjs/server"
 import { META_GRAPH_BASE, getMetaAccount } from "@/lib/meta"
+import { getCampaignSuggestion, updateCampaignSuggestion } from "@/lib/campaign-suggestions"
 
 export async function POST(req: NextRequest) {
   try {
@@ -10,7 +11,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "No autenticado" }, { status: 401 })
     }
 
-    const { name, objective, status, specialAdCategories, dailyBudget } = await req.json()
+    const { name, objective, status, specialAdCategories, dailyBudget, suggestionId } = await req.json()
+
+    if (suggestionId) {
+      const suggestion = await getCampaignSuggestion(suggestionId, userId)
+      if (!suggestion) {
+        return NextResponse.json({ error: "No se encontró la campaña sugerida" }, { status: 404 })
+      }
+    }
 
     if (!name || !objective) {
       return NextResponse.json({ error: "Faltan datos", details: "name y objective son obligatorios" }, { status: 400 })
@@ -52,6 +60,10 @@ export async function POST(req: NextRequest) {
       console.error("Error creando campaña en Meta:", JSON.stringify(result))
       const details = result?.error?.message || `Meta devolvió HTTP ${response.status} sin detalle`
       return NextResponse.json({ error: "Error al crear la campaña", details }, { status: 500 })
+    }
+
+    if (suggestionId) {
+      await updateCampaignSuggestion(suggestionId, userId, { status: "launched", meta_campaign_id: result?.id })
     }
 
     return NextResponse.json({ id: result?.id })
