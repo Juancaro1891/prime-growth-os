@@ -14,6 +14,10 @@ export type CampaignSuggestion = {
   justification: string
   status: string
   meta_campaign_id: string | null
+  // Estado real de delivery en Meta ("ACTIVE"/"PAUSED"), separado de `status` a propósito: `status`
+  // es la etapa del flujo interno ("pending"/"launched") y ya la usa SuggestionCard para decidir si
+  // mostrar los botones de lanzar/ajustar — reusar esa columna para ACTIVE/PAUSED rompería ese check.
+  meta_status: string | null
   created_at: string
 }
 
@@ -89,6 +93,24 @@ export async function getCampaignSuggestion(id: string, userId: string): Promise
 
   if (!response.ok) {
     console.error("Error consultando campaign_suggestion en Supabase:", await response.text())
+    return null
+  }
+
+  const rows = await response.json()
+  return rows?.[0] || null
+}
+
+export async function getCampaignSuggestionByMetaCampaignId(metaCampaignId: string, userId: string): Promise<CampaignSuggestion | null> {
+  const url = getSupabaseUrl()
+  const headers = getSupabaseServiceHeaders()
+
+  const response = await fetch(
+    `${url}/rest/v1/campaign_suggestions?meta_campaign_id=eq.${encodeURIComponent(metaCampaignId)}&user_id=eq.${encodeURIComponent(userId)}&select=*&limit=1`,
+    { headers }
+  )
+
+  if (!response.ok) {
+    console.error("Error consultando campaign_suggestion por meta_campaign_id:", await response.text())
     return null
   }
 

@@ -112,3 +112,16 @@ export async function getFacebookPages(accessToken: string): Promise<MetaPage[]>
 
   return result?.data || []
 }
+
+export async function updateCampaignStatus(accessToken: string, campaignId: string, status: "ACTIVE" | "PAUSED") {
+  const url = new URL(`${META_GRAPH_BASE}/${campaignId}`)
+  url.searchParams.set("access_token", accessToken)
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status }),
+  })
+  const result = await response.json().catch(() => null)
+  return { response, result }
+}

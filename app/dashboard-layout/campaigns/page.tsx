@@ -13,6 +13,7 @@ type Suggestion = {
   justification: string
   status: string
   meta_campaign_id: string | null
+  meta_status: string | null
 }
 
 type StatusResponse = {
@@ -293,6 +294,8 @@ function LaunchWizardModal({
   const [launchError, setLaunchError] = useState("")
   const [launchedDone, setLaunchedDone] = useState(false)
   const [launchedMetaId, setLaunchedMetaId] = useState<string | null>(null)
+  const [activating, setActivating] = useState(false)
+  const [activateError, setActivateError] = useState("")
 
   useEffect(() => {
     return () => {
@@ -398,6 +401,30 @@ function LaunchWizardModal({
     }
   }
 
+  const handleActivateNow = async () => {
+    if (!launchedMetaId) return
+    setActivating(true)
+    setActivateError("")
+    try {
+      const response = await fetch("/api/meta/toggle-campaign", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ campaignId: launchedMetaId, action: "ACTIVE" }),
+      })
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.details || data.error || "Error al activar la campaña")
+      onLaunched({ ...suggestion, status: "launched", meta_campaign_id: launchedMetaId, meta_status: "ACTIVE" })
+    } catch (err) {
+      setActivateError(err instanceof Error ? err.message : "Hubo un error activando la campaña.")
+    } finally {
+      setActivating(false)
+    }
+  }
+
+  const handleActivateLater = () => {
+    onLaunched({ ...suggestion, status: "launched", meta_campaign_id: launchedMetaId, meta_status: "PAUSED" })
+  }
+
   const title = launchedDone
     ? null
     : step === 1
@@ -427,18 +454,29 @@ function LaunchWizardModal({
 
         {launchedDone ? (
           <div className="text-center py-10">
-            <div className="text-5xl mb-4">🎉</div>
-            <p className="text-white text-lg font-semibold mb-2">¡Tu campaña se creó en Meta Ads!</p>
+            <div className="text-5xl mb-4">✅</div>
+            <p className="text-white text-lg font-semibold mb-2">Tu campaña fue creada en Meta Ads en estado pausada</p>
             <p className="text-gray-400 text-sm mb-1 max-w-sm mx-auto leading-relaxed">
-              &ldquo;{suggestion.name}&rdquo; quedó creada y pausada en tu cuenta de Meta Ads, lista para que la actives cuando quieras desde Meta Ads Manager.
+              ¿Quieres activarla ahora para empezar a recibir resultados?
             </p>
-            {launchedMetaId && <p className="text-gray-600 text-xs mb-6">ID de campaña: {launchedMetaId}</p>}
-            <button
-              onClick={() => onLaunched({ ...suggestion, status: "launched", meta_campaign_id: launchedMetaId })}
-              className="px-6 py-2.5 bg-violet-600 hover:bg-violet-700 text-white font-medium rounded-xl transition-all active:scale-95 mt-4"
-            >
-              Listo
-            </button>
+            {launchedMetaId && <p className="text-gray-600 text-xs mb-4">ID de campaña: {launchedMetaId}</p>}
+            {activateError && <p className="text-red-400 text-xs mb-3">{activateError}</p>}
+            <div className="flex gap-2 justify-center mt-4">
+              <button
+                onClick={handleActivateNow}
+                disabled={activating}
+                className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-medium rounded-xl transition-all active:scale-95 flex items-center gap-2"
+              >
+                {activating ? <Spinner /> : "▶"} Activar ahora
+              </button>
+              <button
+                onClick={handleActivateLater}
+                disabled={activating}
+                className="px-6 py-2.5 bg-white/5 hover:bg-white/10 border border-white/10 disabled:opacity-50 text-gray-300 font-medium rounded-xl transition-all"
+              >
+                Activar después
+              </button>
+            </div>
           </div>
         ) : step === 1 ? (
           <div className="grid grid-cols-2 gap-4">
@@ -701,9 +739,33 @@ function SuggestionCard({ suggestion, onUpdate, onLaunchClick }: { suggestion: S
   const [instruction, setInstruction] = useState("")
   const [adjusting, setAdjusting] = useState(false)
   const [adjustError, setAdjustError] = useState("")
+  const [togglingStatus, setTogglingStatus] = useState(false)
+  const [toggleError, setToggleError] = useState("")
 
   const objectiveInfo = objectiveLabels[suggestion.objective] || { label: suggestion.objective, color: "bg-gray-500/20 text-gray-300" }
   const launched = suggestion.status === "launched"
+  const isActive = suggestion.meta_status === "ACTIVE"
+
+  const handleToggleStatus = async () => {
+    if (!suggestion.meta_campaign_id) return
+    setTogglingStatus(true)
+    setToggleError("")
+    try {
+      const nextAction = isActive ? "PAUSED" : "ACTIVE"
+      const response = await fetch("/api/meta/toggle-campaign", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ campaignId: suggestion.meta_campaign_id, action: nextAction }),
+      })
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.details || data.error || "Error al actualizar la campaña")
+      onUpdate({ ...suggestion, meta_status: data.status })
+    } catch (err) {
+      setToggleError(err instanceof Error ? err.message : "Hubo un error actualizando la campaña.")
+    } finally {
+      setTogglingStatus(false)
+    }
+  }
 
   const handleAdjust = async () => {
     if (!instruction.trim()) return
@@ -755,22 +817,41 @@ function SuggestionCard({ suggestion, onUpdate, onLaunchClick }: { suggestion: S
         <p className="text-gray-400 text-sm">{suggestion.justification}</p>
       </div>
 
-      <div className="flex gap-2 mt-auto pt-2">
-        <button
-          onClick={() => onLaunchClick(suggestion)}
-          disabled={launched}
-          className="flex-1 py-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-all active:scale-95"
-        >
-          {launched ? "Lanzada ✅" : "Aprobar y lanzar"}
-        </button>
-        <button
-          onClick={() => setAdjustOpen((v) => !v)}
-          disabled={launched}
-          className="px-3 py-2 bg-white/5 hover:bg-white/10 border border-white/10 disabled:opacity-50 text-gray-300 text-sm font-medium rounded-lg transition-all"
-        >
-          Ajustar con IA
-        </button>
-      </div>
+      {launched && suggestion.meta_campaign_id ? (
+        <div className="flex items-center justify-between gap-2 mt-auto pt-2">
+          <span className="text-sm font-medium text-gray-300">
+            {isActive ? "🟢 Activa" : "⏸️ Pausada"}
+          </span>
+          <button
+            onClick={handleToggleStatus}
+            disabled={togglingStatus}
+            className={`px-3 py-1.5 rounded-lg text-sm font-medium disabled:opacity-50 transition-all active:scale-95 flex items-center gap-2 ${
+              isActive ? "bg-white/5 hover:bg-white/10 border border-white/10 text-gray-300" : "bg-emerald-600 hover:bg-emerald-700 text-white"
+            }`}
+          >
+            {togglingStatus ? <Spinner /> : isActive ? "⏸ Pausar" : "▶ Activar"}
+          </button>
+        </div>
+      ) : (
+        <div className="flex gap-2 mt-auto pt-2">
+          <button
+            onClick={() => onLaunchClick(suggestion)}
+            disabled={launched}
+            className="flex-1 py-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-all active:scale-95"
+          >
+            {launched ? "Lanzada ✅" : "Aprobar y lanzar"}
+          </button>
+          <button
+            onClick={() => setAdjustOpen((v) => !v)}
+            disabled={launched}
+            className="px-3 py-2 bg-white/5 hover:bg-white/10 border border-white/10 disabled:opacity-50 text-gray-300 text-sm font-medium rounded-lg transition-all"
+          >
+            Ajustar con IA
+          </button>
+        </div>
+      )}
+
+      {toggleError && <p className="text-red-400 text-xs">{toggleError}</p>}
 
       {adjustOpen && !launched && (
         <div className="bg-black/20 border border-white/10 rounded-xl p-3 space-y-2">

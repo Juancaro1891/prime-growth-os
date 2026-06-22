@@ -28,7 +28,9 @@ export async function GET() {
     }
 
     const analysis = await getLatestBusinessAnalysis(userId)
-    const suggestions = await getCampaignSuggestions(userId, "pending")
+    // Sin filtro de status: las "launched" deben seguir visibles después de un refresh para poder
+    // activarlas/pausarlas desde aquí — solo "Regenerar todo" (POST) sigue tocando únicamente las pending.
+    const suggestions = await getCampaignSuggestions(userId)
 
     return NextResponse.json({
       connected: true,

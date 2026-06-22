@@ -63,7 +63,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (suggestionId) {
-      await updateCampaignSuggestion(suggestionId, userId, { status: "launched", meta_campaign_id: result?.id })
+      await updateCampaignSuggestion(suggestionId, userId, { status: "launched", meta_campaign_id: result?.id, meta_status: body.status })
     }
 
     return NextResponse.json({ id: result?.id })
