@@ -211,6 +211,28 @@ function UploadSlotCard({
   )
 }
 
+function ImageLightbox({ url, onClose }: { url: string; onClose: () => void }) {
+  return (
+    <div
+      className="fixed inset-0 bg-black/85 backdrop-blur-sm flex items-center justify-center z-[60] p-6"
+      onClick={onClose}
+    >
+      <button
+        onClick={onClose}
+        className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 text-white text-lg flex items-center justify-center transition-colors"
+      >
+        ✕
+      </button>
+      <img
+        src={url}
+        alt="Imagen generada en tamaño completo"
+        onClick={(e) => e.stopPropagation()}
+        className="max-w-full max-h-full object-contain rounded-lg"
+      />
+    </div>
+  )
+}
+
 function LaunchWizardModal({
   suggestion,
   onClose,
@@ -231,6 +253,7 @@ function LaunchWizardModal({
   const [selectedAiImage, setSelectedAiImage] = useState<string | null>(null)
   const [aiGenerating, setAiGenerating] = useState(false)
   const [aiError, setAiError] = useState("")
+  const [lightboxImage, setLightboxImage] = useState<string | null>(null)
 
   const [uploads, setUploads] = useState<Record<UploadSlotKey, UploadValue>>({ feed: null, stories: null, banner: null })
   const uploadsRef = useRef(uploads)
@@ -361,6 +384,7 @@ function LaunchWizardModal({
     : "Todo listo para lanzar"
 
   return (
+    <>
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className="bg-[#111118] border border-white/10 rounded-2xl w-full max-w-2xl p-6 max-h-[85vh] overflow-y-auto">
         {!launchedDone && (
@@ -487,20 +511,29 @@ function LaunchWizardModal({
               <>
                 <div className="grid grid-cols-2 gap-3 mt-2">
                   {aiImages.map((url) => (
-                    <button
+                    <div
                       key={url}
-                      onClick={() => setSelectedAiImage(url)}
-                      className={`relative rounded-xl overflow-hidden border-2 transition-colors ${
-                        selectedAiImage === url ? "border-violet-500" : "border-white/10 hover:border-white/20"
+                      className={`relative rounded-xl overflow-hidden transition-all ${
+                        selectedAiImage === url
+                          ? "border-4 border-violet-500 shadow-lg shadow-violet-500/30"
+                          : "border-2 border-white/10 hover:border-white/20"
                       }`}
                     >
-                      <img src={url} alt="Imagen generada" className="w-full h-40 object-cover" />
-                      {selectedAiImage === url && (
-                        <span className="absolute top-2 right-2 bg-violet-600 text-white text-xs px-2 py-0.5 rounded-full">✓ Elegida</span>
-                      )}
-                    </button>
+                      <button onClick={() => setLightboxImage(url)} className="block w-full">
+                        <img src={url} alt="Imagen generada" className="w-full h-80 object-cover" />
+                      </button>
+                      <button
+                        onClick={() => setSelectedAiImage(url)}
+                        className={`absolute top-2 right-2 px-2 py-1 rounded-full text-xs font-medium transition-colors ${
+                          selectedAiImage === url ? "bg-violet-600 text-white" : "bg-black/60 hover:bg-black/80 text-gray-200"
+                        }`}
+                      >
+                        {selectedAiImage === url ? "✓ Elegida" : "Elegir"}
+                      </button>
+                    </div>
                   ))}
                 </div>
+                <p className="text-gray-500 text-xs mt-2">Click en una imagen para verla en tamaño completo.</p>
                 <div className="flex gap-2 mt-4">
                   <button
                     onClick={() => setStep(3)}
@@ -596,6 +629,8 @@ function LaunchWizardModal({
         )}
       </div>
     </div>
+    {lightboxImage && <ImageLightbox url={lightboxImage} onClose={() => setLightboxImage(null)} />}
+    </>
   )
 }
 
