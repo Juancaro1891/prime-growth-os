@@ -9,7 +9,11 @@ const styleDescriptions: Record<string, string> = {
   "Cinematográfico": "estilo cinematográfico, iluminación dramática, alto contraste, composición de escena de película",
 }
 
-// El frontend sigue enviando tamaños estilo DALL-E 3; gpt-image-1 solo acepta 1024x1024 / 1536x1024 / 1024x1536.
+const OPENAI_IMAGE_MODEL = "gpt-image-2-2026-04-21"
+
+// El frontend sigue enviando tamaños estilo DALL-E 3. gpt-image-2 acepta resoluciones arbitrarias
+// (múltiplos de 16px, lado máx. 3840px, relación de aspecto ≤3:1, 655.360–8.294.400px totales) en vez
+// del enum fijo de gpt-image-1, pero estos 3 valores ya satisfacen esas reglas, así que no hace falta cambiarlos.
 const openAiSizeBySize: Record<string, string> = {
   "1024x1024": "1024x1024", // Cuadrado / feed
   "1792x1024": "1536x1024", // Horizontal
@@ -48,9 +52,13 @@ export async function POST(req: NextRequest) {
       }
 
       // Con imagen de referencia usamos /v1/images/edits (multipart/form-data), no /v1/images/generations.
+      // Separamos explícitamente "qué hacer con la foto adjunta" de "instrucciones de composición" (que ya
+      // pueden incluir dónde poner un logo, etc.) para que el modelo no mezcle ambas cosas.
+      const editsPrompt = `Usa la imagen adjunta únicamente como referencia visual de estilo, color y composición general — no la copies literalmente, genera una imagen nueva inspirada en ella. Sigue además estas instrucciones de composición para la imagen final: ${fullPrompt}`
+
       const formData = new FormData()
-      formData.append("model", "gpt-image-1")
-      formData.append("prompt", fullPrompt)
+      formData.append("model", OPENAI_IMAGE_MODEL)
+      formData.append("prompt", editsPrompt)
       formData.append("size", openAiSize)
       formData.append("quality", "high")
       formData.append("n", "1")
@@ -70,7 +78,7 @@ export async function POST(req: NextRequest) {
           "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
         },
         body: JSON.stringify({
-          model: "gpt-image-1",
+          model: OPENAI_IMAGE_MODEL,
           prompt: fullPrompt,
           size: openAiSize,
           quality: "high",

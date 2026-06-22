@@ -44,10 +44,14 @@ const referenceSlots: { key: number; label: string; icon: string; desc: string }
 ]
 
 function buildImagePrompt(suggestion: Suggestion, hasLogo: boolean) {
-  let prompt = `Fotografía publicitaria profesional para una campaña de marketing en redes sociales. Mensaje del anuncio: "${suggestion.copy}". Audiencia objetivo: ${suggestion.audience || "público general"}. Sin texto superpuesto, sin logos, estética atractiva y realista.`
+  let prompt = `Fotografía publicitaria profesional para una campaña de marketing en redes sociales. Mensaje del anuncio: "${suggestion.copy}". Audiencia objetivo: ${suggestion.audience || "público general"}. Sin texto superpuesto, estética atractiva y realista, calidad de anuncio publicitario profesional para Instagram y Facebook.`
+
   if (hasLogo) {
-    prompt += " Mantén coherencia con una marca que tiene este logo."
+    prompt += " Incorpora el logo de la marca de forma visible y legible en la esquina inferior derecha de la imagen, en un tamaño notorio pero sin tapar el producto ni el mensaje principal del anuncio. El logo debe integrarse de forma natural en la composición general, como parte del diseño del anuncio (no como una marca de agua pegada encima), manteniendo el mismo look profesional de publicidad para redes sociales que el resto de la imagen."
+  } else {
+    prompt += " Sin logos ni marcas visibles."
   }
+
   return prompt
 }
 
