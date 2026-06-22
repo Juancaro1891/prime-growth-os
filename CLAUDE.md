@@ -22,7 +22,7 @@ There is no test suite or test runner configured in this repo.
 Required at runtime (set in `.env.local`, gitignored, not present in the repo):
 
 - `ANTHROPIC_API_KEY` — used directly via raw `fetch` calls to `https://api.anthropic.com/v1/messages` (see Architecture below), not just via the SDK.
-- `OPENAI_API_KEY` — used directly via raw `fetch` to `https://api.openai.com/v1/images/generations` (`dall-e-3`) in `app/api/generate-image/route.ts`. Same no-SDK convention as the Anthropic calls.
+- `REPLICATE_API_KEY` — used directly via raw `fetch` to `https://api.replicate.com/v1/models/black-forest-labs/flux-pro/predictions` (Flux Pro) in `app/api/generate-image/route.ts`, sent as `Authorization: Token <key>`. Same no-SDK convention as the Anthropic calls. Replicate predictions are async: the route polls the returned `urls.get` endpoint every 2s (60s max) until `status` is `succeeded`, then returns `output[0]` (or `output` if it's already a string).
 - `NEXT_PUBLIC_SUPABASE_URL` / `SUPABASE_URL` — Supabase REST endpoint for the `leads` table.
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY` / `SUPABASE_ANON_KEY` — Supabase anon key. Each var is read with a `NEXT_PUBLIC_*` fallback to a non-public name (see `app/api/leads/route.ts`).
 

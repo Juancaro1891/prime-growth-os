@@ -9,57 +9,109 @@ const styleDescriptions: Record<string, string> = {
   "Cinematográfico": "estilo cinematográfico, iluminación dramática, alto contraste, composición de escena de película",
 }
 
+// El frontend (app/dashboard-layout/images/page.tsx) sigue enviando tamaños estilo DALL-E.
+const aspectRatioBySize: Record<string, string> = {
+  "1024x1024": "1:1", // Cuadrado
+  "1792x1024": "16:9", // Horizontal
+  "1024x1792": "9:16", // Vertical
+}
+
+const POLL_INTERVAL_MS = 2000
+const POLL_TIMEOUT_MS = 60000
+
 export async function POST(req: NextRequest) {
   try {
     const { prompt, size, style } = await req.json()
 
-    if (!process.env.OPENAI_API_KEY) {
-      console.error("OPENAI_API_KEY no está configurada en este entorno")
-      return NextResponse.json({ error: "Error al generar la imagen", details: "OPENAI_API_KEY no está configurada en el servidor" }, { status: 500 })
+    if (!process.env.REPLICATE_API_KEY) {
+      console.error("REPLICATE_API_KEY no está configurada en este entorno")
+      return NextResponse.json({ error: "Error al generar la imagen", details: "REPLICATE_API_KEY no está configurada en el servidor" }, { status: 500 })
     }
 
     const fullPrompt = `${prompt}. Estilo visual: ${styleDescriptions[style] || style}. Imagen publicitaria de alta calidad para redes sociales, sin texto ni marcas de agua.`
+    const aspectRatio = aspectRatioBySize[size] || "1:1"
 
-    console.log("Generando imagen con DALL-E 3:", { size, style, promptLength: fullPrompt.length })
+    console.log("Generando imagen con Flux Pro (Replicate):", { aspectRatio, style, promptLength: fullPrompt.length })
 
-    const response = await fetch("https://api.openai.com/v1/images/generations", {
+    const createResponse = await fetch("https://api.replicate.com/v1/models/black-forest-labs/flux-pro/predictions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
+        "Authorization": `Token ${process.env.REPLICATE_API_KEY}`,
       },
       body: JSON.stringify({
-        model: "dall-e-3",
-        prompt: fullPrompt,
-        n: 1,
-        size: size || "1024x1024",
+        input: {
+          prompt: fullPrompt,
+          aspect_ratio: aspectRatio,
+          output_format: "webp",
+        },
       }),
     })
 
-    const result = await response.json().catch((parseError) => {
-      console.error("La respuesta de OpenAI no es JSON válido:", parseError)
+    let prediction = await createResponse.json().catch((parseError) => {
+      console.error("La respuesta de Replicate no es JSON válido:", parseError)
       return null
     })
 
-    console.log("OpenAI respondió con status:", response.status)
+    console.log("Replicate respondió con status HTTP:", createResponse.status)
 
-    if (!response.ok) {
-      console.error("OpenAI API error completo:", JSON.stringify(result))
-      const details = result?.error?.message || `OpenAI devolvió HTTP ${response.status} sin detalle`
+    if (!createResponse.ok) {
+      console.error("Replicate API error completo:", JSON.stringify(prediction))
+      const details = prediction?.detail || `Replicate devolvió HTTP ${createResponse.status} sin detalle`
       return NextResponse.json({ error: "Error al generar la imagen", details }, { status: 500 })
     }
 
-    const imageUrl = result?.data?.[0]?.url
+    const pollUrl = prediction?.urls?.get
 
-    if (!imageUrl) {
-      console.error("Respuesta de OpenAI sin URL de imagen:", JSON.stringify(result))
-      return NextResponse.json({ error: "Error al generar la imagen", details: "OpenAI no devolvió una imagen en la respuesta" }, { status: 500 })
+    if (!pollUrl) {
+      console.error("Respuesta de Replicate sin URL de consulta:", JSON.stringify(prediction))
+      return NextResponse.json({ error: "Error al generar la imagen", details: "Replicate no devolvió una URL para consultar el estado de la predicción" }, { status: 500 })
     }
 
-    return NextResponse.json({
-      url: imageUrl,
-      revisedPrompt: result.data[0].revised_prompt as string | undefined,
-    })
+    const startTime = Date.now()
+
+    while (prediction.status !== "succeeded" && prediction.status !== "failed" && prediction.status !== "canceled") {
+      if (Date.now() - startTime > POLL_TIMEOUT_MS) {
+        console.error("Tiempo de espera agotado consultando la predicción de Replicate:", JSON.stringify(prediction))
+        return NextResponse.json({ error: "Error al generar la imagen", details: "Se agotó el tiempo de espera generando la imagen" }, { status: 504 })
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS))
+
+      const pollResponse = await fetch(pollUrl, {
+        headers: {
+          "Authorization": `Token ${process.env.REPLICATE_API_KEY}`,
+        },
+      })
+
+      const polled = await pollResponse.json().catch((parseError) => {
+        console.error("La respuesta de consulta de Replicate no es JSON válido:", parseError)
+        return null
+      })
+
+      if (!pollResponse.ok || !polled) {
+        console.error("Error consultando la predicción de Replicate:", JSON.stringify(polled))
+        const details = polled?.detail || `Replicate devolvió HTTP ${pollResponse.status} sin detalle al consultar el estado`
+        return NextResponse.json({ error: "Error al generar la imagen", details }, { status: 500 })
+      }
+
+      prediction = polled
+    }
+
+    if (prediction.status !== "succeeded") {
+      console.error("Replicate no pudo generar la imagen:", JSON.stringify(prediction))
+      const details = prediction?.error || "Replicate no pudo generar la imagen"
+      return NextResponse.json({ error: "Error al generar la imagen", details }, { status: 500 })
+    }
+
+    const imageUrl = Array.isArray(prediction.output) ? prediction.output[0] : prediction.output
+
+    if (!imageUrl) {
+      console.error("Respuesta de Replicate sin URL de imagen:", JSON.stringify(prediction))
+      return NextResponse.json({ error: "Error al generar la imagen", details: "Replicate no devolvió una imagen en la respuesta" }, { status: 500 })
+    }
+
+    return NextResponse.json({ url: imageUrl })
   } catch (error) {
     console.error("Error generando imagen (excepción):", error)
     const details = error instanceof Error ? error.message : String(error)
