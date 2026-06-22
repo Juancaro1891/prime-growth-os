@@ -8,7 +8,9 @@ import {
   replacePendingSuggestions,
 } from "@/lib/campaign-suggestions"
 
-export const maxDuration = 60
+// Vercel Pro's platform default (Fluid Compute) is already 300s when unset — this just makes that explicit,
+// since the POST handler calls Claude (generateCampaignSuggestions) and 60s is tighter than the default.
+export const maxDuration = 300
 
 export async function GET() {
   try {

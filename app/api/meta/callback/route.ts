@@ -3,7 +3,10 @@ import { auth } from "@clerk/nextjs/server"
 import { META_GRAPH_BASE, upsertMetaAccount, getAdAccounts, getFacebookPages, type MetaAdAccount } from "@/lib/meta"
 import { generateBusinessAnalysis, saveBusinessAnalysis } from "@/lib/business-analysis"
 
-export const maxDuration = 60
+// Vercel Pro's platform default (Fluid Compute) is already 300s when unset — this just makes that explicit.
+// after() callbacks (enrichAndAnalyze below) run within this same function's duration budget, and that job
+// does Graph API calls + a Claude call (generateBusinessAnalysis) + Supabase writes, so 60s was tight.
+export const maxDuration = 300
 
 function redirectWithStatus(req: NextRequest, key: "meta_connected" | "meta_error", value: string) {
   const dashboardUrl = new URL("/dashboard-layout/dashboard", req.url)

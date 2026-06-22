@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@clerk/nextjs/server"
 import { getCampaignSuggestion, adjustCampaignSuggestion, updateCampaignSuggestion } from "@/lib/campaign-suggestions"
 
-export const maxDuration = 60
+// Vercel Pro's platform default (Fluid Compute) is already 300s when unset — this just makes that explicit,
+// since the handler calls Claude (adjustCampaignSuggestion) and 60s is tighter than the default.
+export const maxDuration = 300
 
 export async function POST(req: NextRequest) {
   try {
