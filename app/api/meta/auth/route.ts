@@ -3,7 +3,7 @@ import { auth } from "@clerk/nextjs/server"
 import crypto from "crypto"
 import { META_GRAPH_VERSION } from "@/lib/meta"
 
-const META_SCOPES = "ads_management,ads_read,business_management"
+const META_SCOPES = "ads_management,ads_read,business_management,pages_show_list,pages_read_engagement"
 
 export async function GET(req: NextRequest) {
   const { userId } = await auth()

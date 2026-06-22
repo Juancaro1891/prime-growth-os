@@ -1,6 +1,9 @@
-import { NextRequest, NextResponse } from "next/server"
+import { NextRequest, NextResponse, after } from "next/server"
 import { auth } from "@clerk/nextjs/server"
-import { META_GRAPH_BASE, upsertMetaAccount } from "@/lib/meta"
+import { META_GRAPH_BASE, upsertMetaAccount, getAdAccounts, getFacebookPages, type MetaAdAccount } from "@/lib/meta"
+import { generateBusinessAnalysis, saveBusinessAnalysis } from "@/lib/business-analysis"
+
+export const maxDuration = 60
 
 function redirectWithStatus(req: NextRequest, key: "meta_connected" | "meta_error", value: string) {
   const dashboardUrl = new URL("/dashboard-layout/dashboard", req.url)
@@ -8,6 +11,58 @@ function redirectWithStatus(req: NextRequest, key: "meta_connected" | "meta_erro
   const response = NextResponse.redirect(dashboardUrl)
   response.cookies.delete("meta_oauth_state")
   return response
+}
+
+// Paso 1 del agente autónomo: lee Páginas + cuenta publicitaria y dispara el análisis con Claude.
+// Corre después de responder el redirect del OAuth (vía after()) para no añadirle latencia ni
+// poder romper una conexión que, en lo que a Meta respecta, ya quedó establecida correctamente.
+async function enrichAndAnalyze(params: {
+  userId: string
+  accessToken: string
+  expiresAt: string | null
+  adAccount: MetaAdAccount | undefined
+}) {
+  const { userId, accessToken, expiresAt, adAccount } = params
+
+  try {
+    const pages = await getFacebookPages(accessToken)
+    const firstPage = pages?.[0]
+
+    const businessName = firstPage?.name || null
+    const businessCategory = firstPage?.category || null
+    const businessDescription = firstPage?.about || firstPage?.description || null
+    const pageFanCount = typeof firstPage?.fan_count === "number" ? firstPage.fan_count : null
+
+    await upsertMetaAccount({
+      user_id: userId,
+      access_token: accessToken,
+      expires_at: expiresAt,
+      ad_account_id: adAccount?.id || null,
+      ad_account_name: adAccount?.name || null,
+      business_name: businessName,
+      business_category: businessCategory,
+      business_description: businessDescription,
+      page_id: firstPage?.id || null,
+      page_fan_count: pageFanCount,
+      business_data: { pages, adAccount: adAccount || null },
+    })
+
+    const analysis = await generateBusinessAnalysis({
+      businessName,
+      businessCategory,
+      businessDescription,
+      pageFanCount,
+      adAccountName: adAccount?.name || null,
+      currency: adAccount?.currency || null,
+      timezoneName: adAccount?.timezone_name || null,
+    })
+
+    if (analysis) {
+      await saveBusinessAnalysis(userId, analysis)
+    }
+  } catch (error) {
+    console.error("Error en enriquecimiento/análisis automático post-OAuth de Meta:", error)
+  }
 }
 
 export async function GET(req: NextRequest) {
@@ -72,18 +127,8 @@ export async function GET(req: NextRequest) {
     const expiresIn = longLivedResponse.ok && longLivedResult?.expires_in ? longLivedResult.expires_in : tokenResult.expires_in
     const expiresAt = expiresIn ? new Date(Date.now() + expiresIn * 1000).toISOString() : null
 
-    const adAccountsUrl = new URL(`${META_GRAPH_BASE}/me/adaccounts`)
-    adAccountsUrl.searchParams.set("fields", "id,name")
-    adAccountsUrl.searchParams.set("access_token", accessToken)
-
-    const adAccountsResponse = await fetch(adAccountsUrl)
-    const adAccountsResult = await adAccountsResponse.json().catch(() => null)
-
-    if (!adAccountsResponse.ok) {
-      console.error("Error obteniendo ad accounts de Meta:", JSON.stringify(adAccountsResult))
-    }
-
-    const firstAdAccount = adAccountsResult?.data?.[0]
+    const adAccounts = await getAdAccounts(accessToken)
+    const firstAdAccount = adAccounts?.[0]
 
     const upsertResponse = await upsertMetaAccount({
       user_id: userId,
@@ -97,6 +142,8 @@ export async function GET(req: NextRequest) {
       console.error("Error guardando la cuenta de Meta en Supabase:", await upsertResponse.text())
       return redirectWithStatus(req, "meta_error", "save_failed")
     }
+
+    after(() => enrichAndAnalyze({ userId, accessToken, expiresAt, adAccount: firstAdAccount }))
 
     return redirectWithStatus(req, "meta_connected", "true")
   } catch (error) {
