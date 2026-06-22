@@ -37,8 +37,27 @@ const uploadSlots: { key: UploadSlotKey; label: string; dims: string; icon: stri
   { key: "banner", label: "Banner", dims: "1200×628px", icon: "🖥️", desc: "Imagen horizontal para anuncios en Facebook" },
 ]
 
-function buildImagePrompt(suggestion: Suggestion) {
-  return `Fotografía publicitaria profesional para una campaña de marketing en redes sociales. Mensaje del anuncio: "${suggestion.copy}". Audiencia objetivo: ${suggestion.audience || "público general"}. Sin texto superpuesto, sin logos, estética atractiva y realista.`
+const referenceSlots: { key: number; label: string; icon: string; desc: string }[] = [
+  { key: 0, label: "Producto", icon: "📦", desc: "Una foto de tu producto o servicio" },
+  { key: 1, label: "Tu local", icon: "🏪", desc: "El espacio físico de tu negocio, si aplica" },
+  { key: 2, label: "En acción", icon: "✨", desc: "Tu equipo o servicio en uso" },
+]
+
+function buildImagePrompt(suggestion: Suggestion, hasLogo: boolean) {
+  let prompt = `Fotografía publicitaria profesional para una campaña de marketing en redes sociales. Mensaje del anuncio: "${suggestion.copy}". Audiencia objetivo: ${suggestion.audience || "público general"}. Sin texto superpuesto, sin logos, estética atractiva y realista.`
+  if (hasLogo) {
+    prompt += " Mantén coherencia con una marca que tiene este logo."
+  }
+  return prompt
+}
+
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result as string)
+    reader.onerror = () => reject(reader.error)
+    reader.readAsDataURL(file)
+  })
 }
 
 function Spinner({ className = "w-4 h-4" }: { className?: string }) {
@@ -144,7 +163,7 @@ function UploadSlotCard({
 }: {
   icon: string
   label: string
-  dims: string
+  dims?: string
   desc: string
   value: UploadValue
   onChange: (file: File) => void
@@ -184,7 +203,7 @@ function UploadSlotCard({
         <div className="text-2xl mb-2">{icon}</div>
       )}
       <p className="text-white text-sm font-medium">{label}</p>
-      <p className="text-gray-500 text-xs">{dims}</p>
+      {dims && <p className="text-gray-500 text-xs">{dims}</p>}
       <p className="text-gray-500 text-xs mt-1 leading-snug">{desc}</p>
       {error && <p className="text-red-400 text-xs mt-1">{error}</p>}
       {value && !error && <p className="text-emerald-400 text-xs mt-1">✓ Imagen lista</p>}
@@ -203,6 +222,10 @@ function LaunchWizardModal({
 }) {
   const [step, setStep] = useState<1 | 2 | 3>(1)
   const [imagePath, setImagePath] = useState<"ai" | "upload" | null>(null)
+  const [aiPhase, setAiPhase] = useState<"customize" | "generate">("customize")
+
+  const [referencePhotos, setReferencePhotos] = useState<UploadValue[]>([null, null, null])
+  const [logo, setLogo] = useState<UploadValue>(null)
 
   const [aiImages, setAiImages] = useState<string[]>([])
   const [selectedAiImage, setSelectedAiImage] = useState<string | null>(null)
@@ -212,6 +235,10 @@ function LaunchWizardModal({
   const [uploads, setUploads] = useState<Record<UploadSlotKey, UploadValue>>({ feed: null, stories: null, banner: null })
   const uploadsRef = useRef(uploads)
   uploadsRef.current = uploads
+  const referencePhotosRef = useRef(referencePhotos)
+  referencePhotosRef.current = referencePhotos
+  const logoRef = useRef(logo)
+  logoRef.current = logo
 
   const [launching, setLaunching] = useState(false)
   const [launchError, setLaunchError] = useState("")
@@ -221,10 +248,14 @@ function LaunchWizardModal({
   useEffect(() => {
     return () => {
       Object.values(uploadsRef.current).forEach((u) => { if (u) URL.revokeObjectURL(u.previewUrl) })
+      referencePhotosRef.current.forEach((u) => { if (u) URL.revokeObjectURL(u.previewUrl) })
+      if (logoRef.current) URL.revokeObjectURL(logoRef.current.previewUrl)
     }
   }, [])
 
   const objectiveInfo = objectiveLabels[suggestion.objective] || { label: suggestion.objective, color: "bg-gray-500/20 text-gray-300" }
+
+  const referencePhoto = referencePhotos.find((p) => p != null) || null
 
   const handleGenerateImages = async () => {
     setAiGenerating(true)
@@ -232,13 +263,14 @@ function LaunchWizardModal({
     setAiImages([])
     setSelectedAiImage(null)
     try {
-      const prompt = buildImagePrompt(suggestion)
+      const prompt = buildImagePrompt(suggestion, !!logo)
+      const imagePrompt = referencePhoto ? await fileToDataUrl(referencePhoto.file) : undefined
       const results = await Promise.all(
         [0, 1].map(() =>
           fetch("/api/generate-image", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ prompt, size: "1024x1024", style: "Fotorrealista" }),
+            body: JSON.stringify({ prompt, size: "1024x1024", style: "Fotorrealista", imagePrompt }),
           }).then(async (r) => ({ ok: r.ok, data: await r.json().catch(() => null) }))
         )
       )
@@ -267,6 +299,23 @@ function LaunchWizardModal({
       const old = prev[key]
       if (old) URL.revokeObjectURL(old.previewUrl)
       return { ...prev, [key]: { file, previewUrl: URL.createObjectURL(file) } }
+    })
+  }
+
+  const handleReferenceChange = (index: number, file: File) => {
+    setReferencePhotos((prev) => {
+      const old = prev[index]
+      if (old) URL.revokeObjectURL(old.previewUrl)
+      const next = [...prev]
+      next[index] = { file, previewUrl: URL.createObjectURL(file) }
+      return next
+    })
+  }
+
+  const handleLogoChange = (file: File) => {
+    setLogo((prev) => {
+      if (prev) URL.revokeObjectURL(prev.previewUrl)
+      return { file, previewUrl: URL.createObjectURL(file) }
     })
   }
 
@@ -303,6 +352,8 @@ function LaunchWizardModal({
     ? null
     : step === 1
     ? "¿Tienes imágenes para esta campaña?"
+    : step === 2 && imagePath === "ai" && aiPhase === "customize"
+    ? "Personaliza tus creativos"
     : step === 2 && imagePath === "ai"
     ? "Generemos tus imágenes con IA"
     : step === 2
@@ -341,7 +392,7 @@ function LaunchWizardModal({
         ) : step === 1 ? (
           <div className="grid grid-cols-2 gap-4">
             <button
-              onClick={() => { setImagePath("ai"); setStep(2) }}
+              onClick={() => { setImagePath("ai"); setAiPhase("customize"); setStep(2) }}
               className="flex flex-col items-center text-center gap-2 p-6 bg-white/5 hover:bg-violet-600/10 border border-white/10 hover:border-violet-500/40 rounded-2xl transition-all active:scale-95"
             >
               <span className="text-4xl">🎨</span>
@@ -357,14 +408,62 @@ function LaunchWizardModal({
               <p className="text-gray-400 text-xs leading-relaxed">Ya tengo fotos o diseños listos para usar</p>
             </button>
           </div>
-        ) : step === 2 && imagePath === "ai" ? (
+        ) : step === 2 && imagePath === "ai" && aiPhase === "customize" ? (
           <div>
             <button onClick={() => setStep(1)} className="text-gray-500 hover:text-white text-xs mb-3 transition-colors">← Cambiar método</button>
 
+            <p className="text-gray-300 text-sm mb-4 leading-relaxed">
+              Sube fotos de tu negocio para que las imágenes generadas se parezcan más a tu marca. Si no tienes, las generamos igualmente.
+            </p>
+
+            <p className="text-gray-500 text-xs mb-2">Fotos de referencia (opcional, hasta 3)</p>
+            <div className="grid grid-cols-3 gap-3">
+              {referenceSlots.map((slot) => (
+                <UploadSlotCard
+                  key={slot.key}
+                  icon={slot.icon}
+                  label={slot.label}
+                  desc={slot.desc}
+                  value={referencePhotos[slot.key]}
+                  onChange={(file) => handleReferenceChange(slot.key, file)}
+                />
+              ))}
+            </div>
+
+            <p className="text-gray-500 text-xs mb-2 mt-4">Logo de tu marca (opcional)</p>
+            <div className="grid grid-cols-3 gap-3">
+              <UploadSlotCard
+                icon="🔖"
+                label="Logo"
+                desc="Preferiblemente en PNG, fondo transparente"
+                value={logo}
+                onChange={handleLogoChange}
+              />
+            </div>
+
+            <p className="text-gray-500 text-xs mt-3">Formatos: JPG, PNG. Máximo 5MB cada una.</p>
+
+            <button
+              onClick={() => setAiPhase("generate")}
+              className="w-full py-3 mt-4 bg-violet-600 hover:bg-violet-700 text-white font-medium rounded-xl transition-all active:scale-95"
+            >
+              {referencePhoto || logo ? "Continuar con estas fotos" : "Continuar sin fotos"}
+            </button>
+          </div>
+        ) : step === 2 && imagePath === "ai" ? (
+          <div>
+            <button onClick={() => setAiPhase("customize")} className="text-gray-500 hover:text-white text-xs mb-3 transition-colors">← Volver a personalizar</button>
+
             <p className="text-gray-500 text-xs mb-1">Prompt que usaremos</p>
             <div className="bg-black/20 border border-white/10 rounded-xl p-3 text-gray-300 text-sm mb-4 leading-relaxed">
-              {buildImagePrompt(suggestion)}
+              {buildImagePrompt(suggestion, !!logo)}
             </div>
+            {referencePhoto && (
+              <div className="flex items-center gap-2 mb-4">
+                <img src={referencePhoto.previewUrl} alt="Foto de referencia" className="w-10 h-10 object-cover rounded-lg" />
+                <p className="text-gray-500 text-xs">También usaremos esta foto como guía visual del estilo.</p>
+              </div>
+            )}
 
             {aiImages.length === 0 && (
               <button

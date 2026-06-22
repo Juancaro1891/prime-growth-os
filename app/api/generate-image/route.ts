@@ -21,7 +21,7 @@ const POLL_TIMEOUT_MS = 60000
 
 export async function POST(req: NextRequest) {
   try {
-    const { prompt, size, style } = await req.json()
+    const { prompt, size, style, imagePrompt } = await req.json()
 
     if (!process.env.REPLICATE_API_KEY) {
       console.error("REPLICATE_API_KEY no está configurada en este entorno")
@@ -31,7 +31,18 @@ export async function POST(req: NextRequest) {
     const fullPrompt = `${prompt}. Estilo visual: ${styleDescriptions[style] || style}. Imagen publicitaria de alta calidad para redes sociales, sin texto ni marcas de agua.`
     const aspectRatio = aspectRatioBySize[size] || "1:1"
 
-    console.log("Generando imagen con Flux Pro (Replicate):", { aspectRatio, style, promptLength: fullPrompt.length })
+    // flux-pro soporta image-to-image / style reference vía "image_prompt" (Flux Redux):
+    // acepta una URL o un data URI base64 (jpeg/png/gif/webp) y guía la composición junto con el prompt de texto.
+    const input: Record<string, unknown> = {
+      prompt: fullPrompt,
+      aspect_ratio: aspectRatio,
+      output_format: "webp",
+    }
+    if (imagePrompt) {
+      input.image_prompt = imagePrompt
+    }
+
+    console.log("Generando imagen con Flux Pro (Replicate):", { aspectRatio, style, promptLength: fullPrompt.length, hasImagePrompt: !!imagePrompt })
 
     const createResponse = await fetch("https://api.replicate.com/v1/models/black-forest-labs/flux-pro/predictions", {
       method: "POST",
@@ -39,13 +50,7 @@ export async function POST(req: NextRequest) {
         "Content-Type": "application/json",
         "Authorization": `Token ${process.env.REPLICATE_API_KEY}`,
       },
-      body: JSON.stringify({
-        input: {
-          prompt: fullPrompt,
-          aspect_ratio: aspectRatio,
-          output_format: "webp",
-        },
-      }),
+      body: JSON.stringify({ input }),
     })
 
     let prediction = await createResponse.json().catch((parseError) => {
