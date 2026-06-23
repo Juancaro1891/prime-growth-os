@@ -26,6 +26,10 @@ type StatusResponse = {
 type UploadSlotKey = "feed" | "stories" | "banner"
 type UploadValue = { file: File; previewUrl: string } | null
 
+// Solo true cuando NEXT_PUBLIC_TEST_MODE=true está presente en el build — no agregar esa variable en
+// Vercel/producción, es a propósito para no exponer el botón de "saltar imágenes" fuera de desarrollo.
+const TEST_MODE = process.env.NEXT_PUBLIC_TEST_MODE === "true"
+
 const objectiveLabels: Record<string, { label: string; color: string }> = {
   OUTCOME_TRAFFIC: { label: "Tráfico", color: "bg-blue-500/20 text-blue-300" },
   OUTCOME_LEADS: { label: "Leads", color: "bg-emerald-500/20 text-emerald-300" },
@@ -270,6 +274,7 @@ function LaunchWizardModal({
   const [imagePromptText, setImagePromptText] = useState("")
   const [showPromptEditor, setShowPromptEditor] = useState(false)
   const [loadingMessageIndex, setLoadingMessageIndex] = useState(0)
+  const [isTestImage, setIsTestImage] = useState(false)
 
   useEffect(() => {
     if (!aiGenerating) {
@@ -309,11 +314,19 @@ function LaunchWizardModal({
 
   const referencePhoto = referencePhotos.find((p) => p != null) || null
 
+  const handleSkipImages = () => {
+    setAiError("")
+    setIsTestImage(true)
+    setSelectedAiImage(null)
+    setStep(3)
+  }
+
   const handleGenerateImages = async () => {
     setAiGenerating(true)
     setAiError("")
     setAiImages([])
     setSelectedAiImage(null)
+    setIsTestImage(false)
     try {
       const prompt = imagePromptText || buildImagePrompt(suggestion, !!logo)
       const imagePrompt = referencePhoto ? await fileToDataUrl(referencePhoto.file) : undefined
@@ -580,6 +593,16 @@ function LaunchWizardModal({
                   )}
                 </button>
 
+                {TEST_MODE && (
+                  <button
+                    onClick={handleSkipImages}
+                    disabled={aiGenerating}
+                    className="w-full py-2 mt-2 text-amber-300/80 hover:text-amber-200 disabled:opacity-50 text-xs font-medium transition-colors"
+                  >
+                    ⚡ Saltar imágenes (modo prueba)
+                  </button>
+                )}
+
                 {aiGenerating && (
                   <div className="mt-3 bg-violet-600/10 border border-violet-500/20 rounded-xl p-3 text-center">
                     <p className="text-violet-200 text-sm">{imageLoadingMessages[loadingMessageIndex]}</p>
@@ -682,7 +705,9 @@ function LaunchWizardModal({
         ) : (
           <div className="space-y-4">
             <div className="bg-white/5 border border-white/10 rounded-xl p-4 flex gap-4 items-center">
-              {thumbnail ? (
+              {isTestImage ? (
+                <div className="w-16 h-16 rounded-lg bg-white/10 flex-shrink-0 flex items-center justify-center text-xl">🧪</div>
+              ) : thumbnail ? (
                 <img src={thumbnail} alt="Miniatura" className="w-16 h-16 object-cover rounded-lg flex-shrink-0" />
               ) : (
                 <div className="w-16 h-16 rounded-lg bg-white/10 flex-shrink-0" />
@@ -695,6 +720,7 @@ function LaunchWizardModal({
                     <span className="text-violet-300 text-xs font-medium">{formatCurrency(suggestion.daily_budget)}/día</span>
                   )}
                 </div>
+                {isTestImage && <p className="text-amber-300/80 text-xs mt-1">Imagen de prueba - no se generó</p>}
               </div>
             </div>
 
