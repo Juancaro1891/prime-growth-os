@@ -67,7 +67,7 @@ async function callOpenAiImages(params: {
     formData.append("model", params.model)
     formData.append("prompt", params.prompt)
     formData.append("size", params.openAiSize)
-    formData.append("quality", "high")
+    formData.append("quality", "medium")
     formData.append("n", "1")
     formData.append("output_format", "png")
     params.images.forEach((image, i) => {
@@ -96,7 +96,7 @@ async function callOpenAiImages(params: {
       model: params.model,
       prompt: params.prompt,
       size: params.openAiSize,
-      quality: "high",
+      quality: "medium",
       n: 1,
       output_format: "png",
     }),
