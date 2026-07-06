@@ -2,7 +2,7 @@
 
 import { ChatInput } from "@/components/chat-input"
 import { ChatMessages } from "@/components/chat-message"
-import { OnboardingModal } from "@/components/onboarding-modal"
+import { OnboardingModal, type OnboardingStep } from "@/components/onboarding-modal"
 import { useState, useEffect } from "react"
 
 interface Message {
@@ -27,21 +27,30 @@ export default function DashboardPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [streamingContent, setStreamingContent] = useState("")
   const [showOnboarding, setShowOnboarding] = useState(false)
-  const [onboardingInitialStep, setOnboardingInitialStep] = useState<1 | 2 | 3 | 4>(1)
+  const [onboardingInitialStep, setOnboardingInitialStep] = useState<OnboardingStep>(1)
+  const [onboardingMetaError, setOnboardingMetaError] = useState<string | null>(null)
 
   useEffect(() => {
     async function checkOnboarding() {
       try {
-        // User returning from Meta OAuth mid-onboarding
-        const pendingStep = sessionStorage.getItem("prime_onboarding_step")
-        if (pendingStep === "3") {
-          sessionStorage.removeItem("prime_onboarding_step")
-          await fetch("/api/onboarding", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ onboarding_completed: true }),
-          })
-          setOnboardingInitialStep(4)
+        // Returning from the Meta OAuth round-trip — the callback always redirects here with
+        // one of these two query params, which reflect the real outcome of the connection.
+        const params = new URLSearchParams(window.location.search)
+        const metaConnected = params.get("meta_connected")
+        const metaError = params.get("meta_error")
+
+        if (metaConnected === "true" || metaError) {
+          const url = new URL(window.location.href)
+          url.searchParams.delete("meta_connected")
+          url.searchParams.delete("meta_error")
+          window.history.replaceState({}, "", url.toString())
+
+          if (metaError) {
+            setOnboardingMetaError(metaError)
+            setOnboardingInitialStep("error")
+          } else {
+            setOnboardingInitialStep("select")
+          }
           setShowOnboarding(true)
           return
         }
@@ -99,6 +108,7 @@ export default function DashboardPage() {
       <OnboardingModal
         open={showOnboarding}
         initialStep={onboardingInitialStep}
+        metaError={onboardingMetaError}
         onComplete={() => setShowOnboarding(false)}
       />
       <div className="flex items-center justify-between px-6 py-4 border-b border-white/10 bg-black/10">

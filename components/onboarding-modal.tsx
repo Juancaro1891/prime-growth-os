@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { MetaAssetSelector } from "@/components/meta-asset-selector"
 
 const INDUSTRIES = [
   "Restaurante / Alimentos y bebidas",
@@ -34,14 +35,27 @@ interface BusinessData {
   city: string
 }
 
+export type OnboardingStep = 1 | 2 | 3 | "select" | "error" | 4
+
+const META_ERROR_MESSAGES: Record<string, string> = {
+  access_denied: "Cancelaste la conexión con Facebook antes de completarla.",
+  invalid_state: "Tu sesión de conexión expiró o no es válida. Intenta de nuevo.",
+  token_exchange_failed: "Facebook no pudo confirmar la autorización. Intenta de nuevo.",
+  no_assets_found: "No encontramos páginas ni cuentas publicitarias en tu cuenta de Facebook.",
+  save_failed: "No pudimos guardar tu conexión con Meta. Intenta de nuevo.",
+  not_configured: "La conexión con Meta Ads no está disponible en este momento.",
+  exception: "Ocurrió un error inesperado conectando con Meta.",
+}
+
 interface OnboardingModalProps {
   open: boolean
-  initialStep?: 1 | 2 | 3 | 4
+  initialStep?: OnboardingStep
+  metaError?: string | null
   onComplete: () => void
 }
 
-export function OnboardingModal({ open, initialStep = 1, onComplete }: OnboardingModalProps) {
-  const [step, setStep] = useState<1 | 2 | 3 | 4>(initialStep)
+export function OnboardingModal({ open, initialStep = 1, metaError = null, onComplete }: OnboardingModalProps) {
+  const [step, setStep] = useState<OnboardingStep>(initialStep)
   const [data, setData] = useState<BusinessData>({ business_name: "", industry: "", country: "", city: "" })
   const [errors, setErrors] = useState<Partial<BusinessData>>({})
   const [saving, setSaving] = useState(false)
@@ -65,7 +79,10 @@ export function OnboardingModal({ open, initialStep = 1, onComplete }: Onboardin
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ...data, onboarding_completed: false }),
     })
-    sessionStorage.setItem("prime_onboarding_step", "3")
+    window.location.href = "/api/meta/auth"
+  }
+
+  function handleRetryMeta() {
     window.location.href = "/api/meta/auth"
   }
 
@@ -80,6 +97,29 @@ export function OnboardingModal({ open, initialStep = 1, onComplete }: Onboardin
     setStep(4)
   }
 
+  async function handleAssetSelectionConfirmed() {
+    await fetch("/api/onboarding", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ onboarding_completed: true }),
+    })
+    setStep(4)
+  }
+
+  // No incluye los campos de negocio (a diferencia de handleSkip): este botón es alcanzable
+  // directamente desde el paso "error" sin pasar por el formulario del paso 2, así que
+  // reenviar `data` vacío pisaría con null un perfil que ya existía.
+  async function handleDismissError() {
+    setSaving(true)
+    await fetch("/api/onboarding", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ onboarding_completed: true }),
+    })
+    setSaving(false)
+    onComplete()
+  }
+
   const inputClass =
     "w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white text-sm placeholder-gray-600 focus:outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/20 transition-colors"
   const selectClass =
@@ -88,7 +128,7 @@ export function OnboardingModal({ open, initialStep = 1, onComplete }: Onboardin
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
       <div className="w-full max-w-md bg-[#12121a] border border-white/10 rounded-2xl shadow-2xl shadow-black/50">
-        {step < 4 && (
+        {typeof step === "number" && step < 4 && (
           <div className="flex items-center justify-center gap-2 pt-7">
             {([1, 2, 3] as const).map((s) => (
               <div
@@ -228,6 +268,39 @@ export function OnboardingModal({ open, initialStep = 1, onComplete }: Onboardin
                   className="w-full py-2 text-gray-400 hover:text-gray-300 text-sm transition-colors"
                 >
                   Saltar por ahora
+                </button>
+              </div>
+            </div>
+          )}
+
+          {step === "select" && <MetaAssetSelector onConfirm={handleAssetSelectionConfirmed} />}
+
+          {step === "error" && (
+            <div className="text-center space-y-6">
+              <div className="flex justify-center">
+                <div className="w-16 h-16 rounded-2xl bg-red-500/15 border border-red-500/30 flex items-center justify-center">
+                  <span className="text-3xl">⚠️</span>
+                </div>
+              </div>
+              <div>
+                <h2 className="text-white text-xl font-bold mb-2">No se pudo conectar con Meta</h2>
+                <p className="text-gray-400 text-sm leading-relaxed">
+                  {(metaError && META_ERROR_MESSAGES[metaError]) || "Ocurrió un error conectando tu cuenta de Meta Ads."}
+                </p>
+              </div>
+              <div className="space-y-2">
+                <button
+                  onClick={handleRetryMeta}
+                  className="w-full py-3 bg-violet-600 hover:bg-violet-500 text-white font-semibold rounded-xl transition-colors"
+                >
+                  Reintentar conexión
+                </button>
+                <button
+                  onClick={handleDismissError}
+                  disabled={saving}
+                  className="w-full py-2 text-gray-400 hover:text-gray-300 text-sm transition-colors"
+                >
+                  Continuar sin conectar
                 </button>
               </div>
             </div>

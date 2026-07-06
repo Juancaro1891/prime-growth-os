@@ -16,6 +16,7 @@ export type MetaAccount = {
   page_id: string | null
   page_fan_count: number | null
   business_data: unknown
+  pending_selection: { pages: MetaPage[]; adAccounts: MetaAdAccount[] } | null
 }
 
 export async function getMetaAccount(userId: string): Promise<MetaAccount | null> {
@@ -45,14 +46,15 @@ export async function upsertMetaAccount(account: {
   user_id: string
   access_token: string
   expires_at: string | null
-  ad_account_id: string | null
-  ad_account_name: string | null
+  ad_account_id?: string | null
+  ad_account_name?: string | null
   business_name?: string | null
   business_category?: string | null
   business_description?: string | null
   page_id?: string | null
   page_fan_count?: number | null
   business_data?: unknown
+  pending_selection?: { pages: MetaPage[]; adAccounts: MetaAdAccount[] } | null
 }) {
   const url = getSupabaseUrl()
   const headers = getSupabaseServiceHeaders()
