@@ -6,8 +6,8 @@ export default function TermsPage() {
       <p className="text-gray-300 text-sm leading-relaxed">
         Estos Términos de Servicio (&ldquo;Términos&rdquo;) rigen el uso de PRIME GROWTH OS, un producto desarrollado
         por Juan Carlos Caro Sierra en Medellín, Colombia, disponible en{" "}
-        <a href="https://prime-growth-os.vercel.app" className="text-violet-400 hover:text-violet-300 underline">
-          prime-growth-os.vercel.app
+        <a href="https://primegrowth.com.co" className="text-violet-400 hover:text-violet-300 underline">
+          primegrowth.com.co
         </a>
         . Al crear una cuenta o usar la plataforma, aceptas estos Términos.
       </p>
@@ -117,8 +117,8 @@ export default function TermsPage() {
           <br />
           Medellín, Colombia
           <br />
-          <a href="mailto:juancarloscarosierra@gmail.com" className="text-violet-400 hover:text-violet-300 underline">
-            juancarloscarosierra@gmail.com
+          <a href="mailto:soporte@primegrowth.com.co" className="text-violet-400 hover:text-violet-300 underline">
+            soporte@primegrowth.com.co
           </a>
         </p>
       </LegalSection>

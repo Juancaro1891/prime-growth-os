@@ -2,7 +2,8 @@
 
 import { ChatInput } from "@/components/chat-input"
 import { ChatMessages } from "@/components/chat-message"
-import { useState } from "react"
+import { OnboardingModal } from "@/components/onboarding-modal"
+import { useState, useEffect } from "react"
 
 interface Message {
   role: "user" | "assistant"
@@ -25,6 +26,38 @@ export default function DashboardPage() {
   const [input, setInput] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [streamingContent, setStreamingContent] = useState("")
+  const [showOnboarding, setShowOnboarding] = useState(false)
+  const [onboardingInitialStep, setOnboardingInitialStep] = useState<1 | 2 | 3 | 4>(1)
+
+  useEffect(() => {
+    async function checkOnboarding() {
+      try {
+        // User returning from Meta OAuth mid-onboarding
+        const pendingStep = sessionStorage.getItem("prime_onboarding_step")
+        if (pendingStep === "3") {
+          sessionStorage.removeItem("prime_onboarding_step")
+          await fetch("/api/onboarding", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ onboarding_completed: true }),
+          })
+          setOnboardingInitialStep(4)
+          setShowOnboarding(true)
+          return
+        }
+
+        const res = await fetch("/api/onboarding")
+        if (!res.ok) return
+        const { profile } = await res.json()
+        if (!profile || !profile.onboarding_completed) {
+          setShowOnboarding(true)
+        }
+      } catch {
+        // Don't block the user if the check fails
+      }
+    }
+    checkOnboarding()
+  }, [])
 
   const sendMessage = async () => {
     if (!input.trim() || isLoading) return
@@ -63,6 +96,11 @@ export default function DashboardPage() {
 
   return (
     <div className="flex flex-col h-full">
+      <OnboardingModal
+        open={showOnboarding}
+        initialStep={onboardingInitialStep}
+        onComplete={() => setShowOnboarding(false)}
+      />
       <div className="flex items-center justify-between px-6 py-4 border-b border-white/10 bg-black/10">
         <div>
           <h1 className="text-white text-sm font-semibold">Growth Copilot</h1>

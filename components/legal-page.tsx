@@ -49,9 +49,9 @@ export function LegalPage({
   )
 }
 
-export function LegalSection({ title, children }: { title: string; children: React.ReactNode }) {
+export function LegalSection({ title, children, id }: { title: string; children: React.ReactNode; id?: string }) {
   return (
-    <section>
+    <section id={id}>
       <h2 className="text-lg font-semibold text-white mb-3">{title}</h2>
       <div className="text-gray-300 text-sm leading-relaxed space-y-3">{children}</div>
     </section>
