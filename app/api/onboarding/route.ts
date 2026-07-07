@@ -40,15 +40,16 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json()
 
-  // Only include fields that were explicitly provided to avoid overwriting with nulls on partial updates
-  const payload: Record<string, unknown> = {
-    user_id: userId,
-    onboarding_completed: body.onboarding_completed ?? false,
-  }
+  // Only include fields that were explicitly provided to avoid overwriting with nulls (or, in the case
+  // of onboarding_completed, false) on partial updates — e.g. the settings page saving just
+  // notification_preferences shouldn't reset a profile that already completed onboarding.
+  const payload: Record<string, unknown> = { user_id: userId }
+  if ("onboarding_completed" in body) payload.onboarding_completed = body.onboarding_completed
   if ("business_name" in body) payload.business_name = body.business_name || null
   if ("industry" in body) payload.industry = body.industry || null
   if ("country" in body) payload.country = body.country || null
   if ("city" in body) payload.city = body.city || null
+  if ("notification_preferences" in body) payload.notification_preferences = body.notification_preferences || null
 
   const response = await fetch(`${url}/rest/v1/user_profiles?on_conflict=user_id`, {
     method: "POST",

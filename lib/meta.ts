@@ -19,6 +19,16 @@ export type MetaAccount = {
   pending_selection: { pages: MetaPage[]; adAccounts: MetaAdAccount[] } | null
 }
 
+export async function deleteMetaAccount(userId: string) {
+  const url = getSupabaseUrl()
+  const headers = getSupabaseServiceHeaders()
+
+  return fetch(`${url}/rest/v1/meta_accounts?user_id=eq.${encodeURIComponent(userId)}`, {
+    method: "DELETE",
+    headers,
+  })
+}
+
 export async function getMetaAccount(userId: string): Promise<MetaAccount | null> {
   const url = getSupabaseUrl()
   const headers = getSupabaseServiceHeaders()

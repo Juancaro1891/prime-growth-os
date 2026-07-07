@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from "react"
 import Image from "next/image"
+import Link from "next/link"
+import { Show } from "@clerk/nextjs"
 
 const problems = [
   {
@@ -465,6 +467,24 @@ export default function LandingPage() {
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
             ES
           </button>
+
+          {/* Sesión — solo visible para visitantes sin sesión iniciada */}
+          <Show when="signed-out">
+            <Link
+              href="/sign-in"
+              className="px-3 py-1.5 rounded-full text-gray-300 hover:text-white hover:bg-white/[0.07] transition-all duration-200 text-sm"
+            >
+              Iniciar sesión
+            </Link>
+          </Show>
+          <Show when="signed-in">
+            <Link
+              href="/dashboard"
+              className="px-3 py-1.5 rounded-full text-gray-300 hover:text-white hover:bg-white/[0.07] transition-all duration-200 text-sm"
+            >
+              Ir al Dashboard
+            </Link>
+          </Show>
 
           {/* CTA — borde gradiente, interior oscuro */}
           <div className="ml-1 p-[1px] rounded-full bg-gradient-to-r from-violet-500 via-purple-400 to-pink-500 shadow-lg shadow-violet-500/25">

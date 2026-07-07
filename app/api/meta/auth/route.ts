@@ -9,7 +9,9 @@ export async function GET(req: NextRequest) {
   const { userId } = await auth()
 
   if (!userId) {
-    return NextResponse.redirect(new URL("/sign-in", req.url))
+    const signInUrl = new URL("/sign-in", req.url)
+    signInUrl.searchParams.set("redirect_url", req.url)
+    return NextResponse.redirect(signInUrl)
   }
 
   const appId = process.env.META_APP_ID

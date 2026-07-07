@@ -7,10 +7,36 @@ import { META_GRAPH_BASE, upsertMetaAccount, getAdAccounts, getFacebookPages } f
 // does a bit more work before responding than it used to.
 export const maxDuration = 300
 
-function redirectWithStatus(req: NextRequest, key: "meta_connected" | "meta_error", value: string) {
-  const dashboardUrl = new URL("/dashboard-layout/dashboard", req.url)
-  dashboardUrl.searchParams.set(key, value)
-  const response = NextResponse.redirect(dashboardUrl)
+// Este callback corre dentro de la ventana popup abierta por useMetaConnect (ver hooks/use-meta-connect.ts),
+// no en la pestaña principal — por eso responde con una página HTML que le avisa el resultado a
+// window.opener vía postMessage y se cierra sola, en vez de redirigir a /dashboard-layout/dashboard.
+const POPUP_MESSAGE_SOURCE = "prime-meta-oauth"
+
+function popupResponse(payload: { status: "connected" } | { status: "error"; error: string }) {
+  const message = JSON.stringify({ source: POPUP_MESSAGE_SOURCE, ...payload })
+  const fallbackText =
+    payload.status === "error"
+      ? "Hubo un problema conectando con Meta. Ya puedes cerrar esta ventana."
+      : "Conexión exitosa. Ya puedes cerrar esta ventana."
+
+  const html = `<!doctype html>
+<html lang="es">
+<head><meta charset="utf-8" /><title>Meta Ads</title></head>
+<body style="background:#0a0a0f;color:#fff;font-family:system-ui,-apple-system,sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;">
+  <p style="opacity:.7;font-size:14px;">${fallbackText}</p>
+  <script>
+    (function () {
+      var payload = ${message};
+      if (window.opener) {
+        try { window.opener.postMessage(payload, window.location.origin); } catch (e) {}
+      }
+      window.close();
+    })();
+  </script>
+</body>
+</html>`
+
+  const response = new NextResponse(html, { headers: { "Content-Type": "text/html; charset=utf-8" } })
   response.cookies.delete("meta_oauth_state")
   return response
 }
@@ -21,13 +47,20 @@ export async function GET(req: NextRequest) {
 
   if (oauthError) {
     console.error("Meta OAuth devolvió un error:", oauthError, searchParams.get("error_description"))
-    return redirectWithStatus(req, "meta_error", "access_denied")
+    return popupResponse({ status: "error", error: "access_denied" })
   }
 
   const { userId } = await auth()
 
   if (!userId) {
-    return NextResponse.redirect(new URL("/sign-in", req.url))
+    // No debería dispararse casi nunca con el flujo de popup (la pestaña principal, y su sesión de
+    // Clerk, nunca navega fuera del sitio), pero se deja como red de seguridad: si de todas formas
+    // Clerk no reconoce la sesión en este request puntual, lo mandamos a /sign-in con un redirect_url
+    // de vuelta a esta misma URL — el code/state de Facebook todavía no se ha canjeado en este punto,
+    // así que es seguro reintentar este callback una vez Clerk confirme/refresque la sesión.
+    const signInUrl = new URL("/sign-in", req.url)
+    signInUrl.searchParams.set("redirect_url", req.url)
+    return NextResponse.redirect(signInUrl)
   }
 
   const code = searchParams.get("code")
@@ -36,7 +69,7 @@ export async function GET(req: NextRequest) {
 
   if (!code || !state || !storedState || state !== storedState) {
     console.error("Meta OAuth: state ausente o no coincide (posible CSRF)")
-    return redirectWithStatus(req, "meta_error", "invalid_state")
+    return popupResponse({ status: "error", error: "invalid_state" })
   }
 
   const appId = process.env.META_APP_ID
@@ -45,7 +78,7 @@ export async function GET(req: NextRequest) {
 
   if (!appId || !appSecret || !redirectUri) {
     console.error("Faltan META_APP_ID, META_APP_SECRET o META_REDIRECT_URI en este entorno")
-    return redirectWithStatus(req, "meta_error", "not_configured")
+    return popupResponse({ status: "error", error: "not_configured" })
   }
 
   try {
@@ -60,7 +93,7 @@ export async function GET(req: NextRequest) {
 
     if (!tokenResponse.ok || !tokenResult?.access_token) {
       console.error("Error intercambiando code por access_token de Meta:", JSON.stringify(tokenResult))
-      return redirectWithStatus(req, "meta_error", "token_exchange_failed")
+      return popupResponse({ status: "error", error: "token_exchange_failed" })
     }
 
     // Intercambiamos el token de corta duración por uno de larga duración (~60 días).
@@ -83,7 +116,7 @@ export async function GET(req: NextRequest) {
 
     if (adAccounts.length === 0 && pages.length === 0) {
       console.error("Meta OAuth: la cuenta no tiene páginas ni cuentas publicitarias asociadas")
-      return redirectWithStatus(req, "meta_error", "no_assets_found")
+      return popupResponse({ status: "error", error: "no_assets_found" })
     }
 
     // Deliberadamente no se envían ad_account_id/page_id/business_* aquí: si el usuario ya tenía una
@@ -98,12 +131,12 @@ export async function GET(req: NextRequest) {
 
     if (!upsertResponse.ok) {
       console.error("Error guardando la cuenta de Meta en Supabase:", await upsertResponse.text())
-      return redirectWithStatus(req, "meta_error", "save_failed")
+      return popupResponse({ status: "error", error: "save_failed" })
     }
 
-    return redirectWithStatus(req, "meta_connected", "true")
+    return popupResponse({ status: "connected" })
   } catch (error) {
     console.error("Error en callback de Meta (excepción):", error)
-    return redirectWithStatus(req, "meta_error", "exception")
+    return popupResponse({ status: "error", error: "exception" })
   }
 }

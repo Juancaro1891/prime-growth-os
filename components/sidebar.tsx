@@ -55,10 +55,15 @@ export function Sidebar() {
       </nav>
 
       <div className="px-2.5 py-3 border-t border-white/[0.06]">
-        <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-gray-600 hover:text-gray-300 hover:bg-white/[0.05] cursor-pointer transition-colors">
+        <Link
+          href="/settings"
+          className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-colors ${
+            pathname === "/settings" ? "text-violet-200 bg-white/[0.05]" : "text-gray-600 hover:text-gray-300 hover:bg-white/[0.05]"
+          }`}
+        >
           <span>⚙️</span>
           <span className="font-medium">Configuración</span>
-        </div>
+        </Link>
       </div>
     </aside>
   )

@@ -2,8 +2,9 @@
 
 import { useState } from "react"
 import { MetaAssetSelector } from "@/components/meta-asset-selector"
+import { useMetaConnect } from "@/hooks/use-meta-connect"
 
-const INDUSTRIES = [
+export const INDUSTRIES = [
   "Restaurante / Alimentos y bebidas",
   "Moda y ropa",
   "Salud y bienestar",
@@ -21,7 +22,7 @@ const INDUSTRIES = [
   "Otro",
 ]
 
-const COUNTRIES = [
+export const COUNTRIES = [
   "Colombia", "México", "Argentina", "Chile", "Perú", "Ecuador",
   "Venezuela", "Bolivia", "Uruguay", "Paraguay", "Costa Rica",
   "Guatemala", "Honduras", "El Salvador", "Nicaragua", "Panamá",
@@ -35,7 +36,7 @@ interface BusinessData {
   city: string
 }
 
-export type OnboardingStep = 1 | 2 | 3 | "select" | "error" | 4
+export type OnboardingStep = 1 | 2 | 3 | 4
 
 const META_ERROR_MESSAGES: Record<string, string> = {
   access_denied: "Cancelaste la conexión con Facebook antes de completarla.",
@@ -44,21 +45,22 @@ const META_ERROR_MESSAGES: Record<string, string> = {
   no_assets_found: "No encontramos páginas ni cuentas publicitarias en tu cuenta de Facebook.",
   save_failed: "No pudimos guardar tu conexión con Meta. Intenta de nuevo.",
   not_configured: "La conexión con Meta Ads no está disponible en este momento.",
+  popup_blocked: "El navegador bloqueó la ventana de conexión. Habilita las ventanas emergentes para este sitio e intenta de nuevo.",
   exception: "Ocurrió un error inesperado conectando con Meta.",
 }
 
 interface OnboardingModalProps {
   open: boolean
   initialStep?: OnboardingStep
-  metaError?: string | null
   onComplete: () => void
 }
 
-export function OnboardingModal({ open, initialStep = 1, metaError = null, onComplete }: OnboardingModalProps) {
+export function OnboardingModal({ open, initialStep = 1, onComplete }: OnboardingModalProps) {
   const [step, setStep] = useState<OnboardingStep>(initialStep)
   const [data, setData] = useState<BusinessData>({ business_name: "", industry: "", country: "", city: "" })
   const [errors, setErrors] = useState<Partial<BusinessData>>({})
   const [saving, setSaving] = useState(false)
+  const metaConnect = useMetaConnect()
 
   if (!open) return null
 
@@ -79,11 +81,8 @@ export function OnboardingModal({ open, initialStep = 1, metaError = null, onCom
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ...data, onboarding_completed: false }),
     })
-    window.location.href = "/api/meta/auth"
-  }
-
-  function handleRetryMeta() {
-    window.location.href = "/api/meta/auth"
+    setSaving(false)
+    metaConnect.connect()
   }
 
   async function handleSkip() {
@@ -107,7 +106,7 @@ export function OnboardingModal({ open, initialStep = 1, metaError = null, onCom
   }
 
   // No incluye los campos de negocio (a diferencia de handleSkip): este botón es alcanzable
-  // directamente desde el paso "error" sin pasar por el formulario del paso 2, así que
+  // directamente desde el paso de error sin pasar por el formulario del paso 2, así que
   // reenviar `data` vacío pisaría con null un perfil que ya existía.
   async function handleDismissError() {
     setSaving(true)
@@ -125,10 +124,12 @@ export function OnboardingModal({ open, initialStep = 1, metaError = null, onCom
   const selectClass =
     "w-full bg-[#0e0e16] border border-white/10 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/20 transition-colors"
 
+  const showingMetaConnectPrompt = step === 3 && (metaConnect.status === "idle" || metaConnect.status === "connecting" || metaConnect.status === "cancelled")
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
       <div className="w-full max-w-md bg-[#12121a] border border-white/10 rounded-2xl shadow-2xl shadow-black/50">
-        {typeof step === "number" && step < 4 && (
+        {step < 4 && (
           <div className="flex items-center justify-center gap-2 pt-7">
             {([1, 2, 3] as const).map((s) => (
               <div
@@ -229,7 +230,7 @@ export function OnboardingModal({ open, initialStep = 1, metaError = null, onCom
             </div>
           )}
 
-          {step === 3 && (
+          {showingMetaConnectPrompt && (
             <div className="text-center space-y-6">
               <div className="flex justify-center">
                 <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-[#1877f2] to-[#0a5dc2] flex items-center justify-center shadow-lg shadow-blue-500/25">
@@ -254,13 +255,16 @@ export function OnboardingModal({ open, initialStep = 1, metaError = null, onCom
                   </div>
                 ))}
               </div>
+              {metaConnect.status === "cancelled" && (
+                <p className="text-amber-300 text-xs">Cerraste la ventana antes de terminar. Intenta de nuevo.</p>
+              )}
               <div className="space-y-2">
                 <button
                   onClick={handleConnectMeta}
-                  disabled={saving}
+                  disabled={saving || metaConnect.status === "connecting"}
                   className="w-full py-3 bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white font-semibold rounded-xl transition-colors"
                 >
-                  {saving ? "Redirigiendo..." : "Conectar Meta Ads"}
+                  {metaConnect.status === "connecting" ? "Conectando..." : saving ? "Guardando..." : "Conectar Meta Ads"}
                 </button>
                 <button
                   onClick={handleSkip}
@@ -273,9 +277,11 @@ export function OnboardingModal({ open, initialStep = 1, metaError = null, onCom
             </div>
           )}
 
-          {step === "select" && <MetaAssetSelector onConfirm={handleAssetSelectionConfirmed} />}
+          {step === 3 && metaConnect.status === "needs_selection" && (
+            <MetaAssetSelector onConfirm={handleAssetSelectionConfirmed} />
+          )}
 
-          {step === "error" && (
+          {step === 3 && metaConnect.status === "error" && (
             <div className="text-center space-y-6">
               <div className="flex justify-center">
                 <div className="w-16 h-16 rounded-2xl bg-red-500/15 border border-red-500/30 flex items-center justify-center">
@@ -285,12 +291,12 @@ export function OnboardingModal({ open, initialStep = 1, metaError = null, onCom
               <div>
                 <h2 className="text-white text-xl font-bold mb-2">No se pudo conectar con Meta</h2>
                 <p className="text-gray-400 text-sm leading-relaxed">
-                  {(metaError && META_ERROR_MESSAGES[metaError]) || "Ocurrió un error conectando tu cuenta de Meta Ads."}
+                  {(metaConnect.errorCode && META_ERROR_MESSAGES[metaConnect.errorCode]) || "Ocurrió un error conectando tu cuenta de Meta Ads."}
                 </p>
               </div>
               <div className="space-y-2">
                 <button
-                  onClick={handleRetryMeta}
+                  onClick={metaConnect.connect}
                   className="w-full py-3 bg-violet-600 hover:bg-violet-500 text-white font-semibold rounded-xl transition-colors"
                 >
                   Reintentar conexión

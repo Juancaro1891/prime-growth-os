@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react"
 import { formatCurrency } from "@/lib/utils"
+import { useMetaConnect } from "@/hooks/use-meta-connect"
+import { MetaAssetSelector } from "@/components/meta-asset-selector"
 
 type Suggestion = {
   id: string
@@ -86,7 +88,28 @@ function Spinner({ className = "w-4 h-4" }: { className?: string }) {
   )
 }
 
-function ConnectCard() {
+const CONNECT_ERROR_MESSAGES: Record<string, string> = {
+  access_denied: "Cancelaste la conexión con Facebook antes de completarla.",
+  invalid_state: "Tu sesión de conexión expiró o no es válida. Intenta de nuevo.",
+  token_exchange_failed: "Facebook no pudo confirmar la autorización. Intenta de nuevo.",
+  no_assets_found: "No encontramos páginas ni cuentas publicitarias en tu cuenta de Facebook.",
+  save_failed: "No pudimos guardar tu conexión con Meta. Intenta de nuevo.",
+  not_configured: "La conexión con Meta Ads no está disponible en este momento.",
+  popup_blocked: "El navegador bloqueó la ventana de conexión. Habilita las ventanas emergentes para este sitio e intenta de nuevo.",
+  exception: "Ocurrió un error inesperado conectando con Meta.",
+}
+
+function ConnectCard({ onConnected }: { onConnected: () => void }) {
+  const metaConnect = useMetaConnect()
+
+  if (metaConnect.status === "needs_selection") {
+    return (
+      <div className="max-w-lg mx-auto bg-white/5 border border-white/10 rounded-2xl p-8">
+        <MetaAssetSelector onConfirm={onConnected} />
+      </div>
+    )
+  }
+
   return (
     <div className="max-w-lg mx-auto bg-gradient-to-br from-violet-600/20 to-purple-900/20 border border-violet-500/20 rounded-2xl p-8 text-center">
       <div className="w-12 h-12 rounded-full bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center text-white text-lg font-bold mx-auto mb-4">M</div>
@@ -94,11 +117,20 @@ function ConnectCard() {
       <p className="text-gray-400 text-sm mb-6 leading-relaxed">
         Conecta tu página de Facebook y tu cuenta publicitaria para que la IA analice tu negocio y te proponga campañas listas para lanzar.
       </p>
+      {metaConnect.status === "error" && (
+        <p className="text-red-400 text-xs mb-4">
+          {(metaConnect.errorCode && CONNECT_ERROR_MESSAGES[metaConnect.errorCode]) || "Ocurrió un error conectando tu cuenta de Meta Ads."}
+        </p>
+      )}
+      {metaConnect.status === "cancelled" && (
+        <p className="text-amber-300 text-xs mb-4">Cerraste la ventana antes de terminar. Intenta de nuevo.</p>
+      )}
       <button
-        onClick={() => { window.location.href = "/api/meta/auth" }}
-        className="px-6 py-3 bg-violet-600 hover:bg-violet-700 text-white font-medium rounded-xl transition-all active:scale-95"
+        onClick={metaConnect.connect}
+        disabled={metaConnect.status === "connecting"}
+        className="px-6 py-3 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white font-medium rounded-xl transition-all active:scale-95"
       >
-        Conectar Meta Ads
+        {metaConnect.status === "connecting" ? "Conectando..." : "Conectar Meta Ads"}
       </button>
     </div>
   )
@@ -915,24 +947,21 @@ export default function CampaignsPage() {
   const [generating, setGenerating] = useState(false)
   const [launchTarget, setLaunchTarget] = useState<Suggestion | null>(null)
 
-  useEffect(() => {
-    let cancelled = false
-
-    const loadStatus = async () => {
-      try {
-        const response = await fetch("/api/meta/generate-campaigns")
-        const data = await response.json()
-        if (!response.ok) throw new Error(data.details || data.error || "Error al cargar el estado")
-        if (!cancelled) setStatus(data)
-      } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : "Hubo un error cargando tus campañas.")
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
+  const loadStatus = async () => {
+    try {
+      const response = await fetch("/api/meta/generate-campaigns")
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.details || data.error || "Error al cargar el estado")
+      setStatus(data)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Hubo un error cargando tus campañas.")
+    } finally {
+      setLoading(false)
     }
+  }
 
+  useEffect(() => {
     loadStatus()
-    return () => { cancelled = true }
   }, [])
 
   const handleGenerate = async () => {
@@ -983,7 +1012,7 @@ export default function CampaignsPage() {
           <div className="max-w-lg mx-auto bg-red-500/10 border border-red-500/20 rounded-xl p-4 text-red-300 text-sm">{error}</div>
         )}
 
-        {!loading && status && !status.connected && <ConnectCard />}
+        {!loading && status && !status.connected && <ConnectCard onConnected={loadStatus} />}
 
         {!loading && status && status.connected && status.suggestions.length === 0 && (
           <GenerateCard
