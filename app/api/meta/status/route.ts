@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { auth } from "@clerk/nextjs/server"
-import { getMetaAccount } from "@/lib/meta"
+import { getMetaAccount, isMetaFullyConnected } from "@/lib/meta"
 
 export async function GET() {
   const { userId } = await auth()
@@ -8,7 +8,7 @@ export async function GET() {
 
   const account = await getMetaAccount(userId)
 
-  const connected = !!(account?.ad_account_id && account?.page_id)
+  const connected = isMetaFullyConnected(account)
 
   return NextResponse.json({
     connected,

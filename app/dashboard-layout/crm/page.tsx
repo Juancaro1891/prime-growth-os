@@ -44,48 +44,72 @@ export default function CRMPage() {
   const [view, setView] = useState<"list" | "kanban">("list")
   const [form, setForm] = useState({ name: "", email: "", phone: "", source: "Manual", value: "", notes: "" })
   const [saving, setSaving] = useState(false)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
   const fetchLeads = async () => {
     try {
       const res = await fetch("/api/leads")
       const data = await res.json()
+      if (!res.ok) throw new Error(data?.error || "No se pudieron cargar los leads.")
       if (Array.isArray(data)) setLeads(data)
     } catch (error) {
       console.error("Error:", error)
+      setErrorMessage(error instanceof Error ? error.message : "No se pudieron cargar los leads.")
     } finally {
       setLoading(false)
     }
   }
 
-  useEffect(() => { fetchLeads() }, [])
+  useEffect(() => {
+    // Carga inicial al montar: fetchLeads() solo actualiza estado dentro de callbacks async
+    // después de un await (fetch), no de forma síncrona en el cuerpo del efecto — el patrón
+    // estándar de "cargar datos al montar", no la cascada de renders que la regla previene.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchLeads()
+  }, [])
 
   const handleCreate = async () => {
     if (!form.name.trim()) return
     setSaving(true)
     try {
-      await fetch("/api/leads", {
+      const res = await fetch("/api/leads", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...form, stage: "Nuevo lead" }),
       })
+      const data = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(data?.error || "No se pudo guardar el lead.")
       setShowModal(false)
       setForm({ name: "", email: "", phone: "", source: "Manual", value: "", notes: "" })
       fetchLeads()
     } catch (error) {
       console.error("Error:", error)
+      setErrorMessage(error instanceof Error ? error.message : "No se pudo guardar el lead.")
     } finally {
       setSaving(false)
     }
   }
 
   const handleStageChange = async (lead: Lead, newStage: string) => {
+    const previousStage = lead.stage
     setLeads((prev) => prev.map((l) => l.id === lead.id ? { ...l, stage: newStage } : l))
-    await fetch("/api/leads", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: lead.id, stage: newStage }),
-    })
     if (selected?.id === lead.id) setSelected({ ...lead, stage: newStage })
+    try {
+      const res = await fetch("/api/leads", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: lead.id, stage: newStage }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => null)
+        throw new Error(body?.error || "No se pudo actualizar la etapa del lead.")
+      }
+    } catch (error) {
+      console.error("Error actualizando etapa:", error)
+      setLeads((prev) => prev.map((l) => l.id === lead.id ? { ...l, stage: previousStage } : l))
+      if (selected?.id === lead.id) setSelected({ ...lead, stage: previousStage })
+      setErrorMessage("No se pudo actualizar la etapa del lead. Intenta de nuevo.")
+    }
   }
 
   const getInitials = (name: string) => name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)
@@ -124,6 +148,14 @@ export default function CRMPage() {
             </button>
           </div>
         </div>
+
+        {/* Error banner */}
+        {errorMessage && (
+          <div className="flex items-center justify-between px-6 py-2.5 bg-red-500/10 border-b border-red-500/20 flex-shrink-0">
+            <p className="text-red-300 text-xs">{errorMessage}</p>
+            <button onClick={() => setErrorMessage(null)} className="text-red-400 hover:text-red-200 text-xs">✕</button>
+          </div>
+        )}
 
         {/* Stats */}
         <div className="grid grid-cols-5 gap-0 border-b border-white/10 flex-shrink-0">

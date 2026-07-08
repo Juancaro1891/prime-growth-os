@@ -16,6 +16,7 @@ type Suggestion = {
   status: string
   meta_campaign_id: string | null
   meta_status: string | null
+  stale?: boolean
 }
 
 type StatusResponse = {
@@ -97,6 +98,7 @@ const CONNECT_ERROR_MESSAGES: Record<string, string> = {
   not_configured: "La conexión con Meta Ads no está disponible en este momento.",
   popup_blocked: "El navegador bloqueó la ventana de conexión. Habilita las ventanas emergentes para este sitio e intenta de nuevo.",
   exception: "Ocurrió un error inesperado conectando con Meta.",
+  timeout: "La conexión con Meta está tardando demasiado. Cierra la ventana emergente e intenta de nuevo.",
 }
 
 function ConnectCard({ onConnected }: { onConnected: () => void }) {
@@ -105,7 +107,7 @@ function ConnectCard({ onConnected }: { onConnected: () => void }) {
   if (metaConnect.status === "needs_selection") {
     return (
       <div className="max-w-lg mx-auto bg-white/5 border border-white/10 rounded-2xl p-8">
-        <MetaAssetSelector onConfirm={onConnected} />
+        <MetaAssetSelector onConfirm={onConnected} onExpired={metaConnect.reset} />
       </div>
     )
   }
@@ -247,6 +249,7 @@ function UploadSlotCard({
     >
       <input ref={inputRef} type="file" accept="image/png,image/jpeg" className="hidden" onChange={(e) => acceptFile(e.target.files?.[0])} />
       {value ? (
+        // eslint-disable-next-line @next/next/no-img-element -- blob: URL local (URL.createObjectURL), no un asset optimizable
         <img src={value.previewUrl} alt={label} className="w-full h-28 object-cover rounded-lg mb-2" />
       ) : (
         <div className="text-2xl mb-2">{icon}</div>
@@ -272,6 +275,7 @@ function ImageLightbox({ url, onClose }: { url: string; onClose: () => void }) {
       >
         ✕
       </button>
+      {/* eslint-disable-next-line @next/next/no-img-element -- URL de imagen generada por IA (data URI/blob), no un asset optimizable */}
       <img
         src={url}
         alt="Imagen generada en tamaño completo"
@@ -309,10 +313,7 @@ function LaunchWizardModal({
   const [isTestImage, setIsTestImage] = useState(false)
 
   useEffect(() => {
-    if (!aiGenerating) {
-      setLoadingMessageIndex(0)
-      return
-    }
+    if (!aiGenerating) return
     const interval = setInterval(() => {
       setLoadingMessageIndex((i) => (i + 1) % imageLoadingMessages.length)
     }, 5000)
@@ -321,18 +322,21 @@ function LaunchWizardModal({
 
   const [uploads, setUploads] = useState<Record<UploadSlotKey, UploadValue>>({ feed: null, stories: null, banner: null })
   const uploadsRef = useRef(uploads)
-  uploadsRef.current = uploads
   const referencePhotosRef = useRef(referencePhotos)
-  referencePhotosRef.current = referencePhotos
   const logoRef = useRef(logo)
-  logoRef.current = logo
+
+  useEffect(() => { uploadsRef.current = uploads }, [uploads])
+  useEffect(() => { referencePhotosRef.current = referencePhotos }, [referencePhotos])
+  useEffect(() => { logoRef.current = logo }, [logo])
 
   const [launching, setLaunching] = useState(false)
   const [launchError, setLaunchError] = useState("")
+  const [launchErrorCode, setLaunchErrorCode] = useState<string | null>(null)
   const [launchedDone, setLaunchedDone] = useState(false)
   const [launchedMetaId, setLaunchedMetaId] = useState<string | null>(null)
   const [activating, setActivating] = useState(false)
   const [activateError, setActivateError] = useState("")
+  const [activateErrorCode, setActivateErrorCode] = useState<string | null>(null)
 
   useEffect(() => {
     return () => {
@@ -355,6 +359,7 @@ function LaunchWizardModal({
 
   const handleGenerateImages = async () => {
     setAiGenerating(true)
+    setLoadingMessageIndex(0)
     setAiError("")
     setAiImages([])
     setSelectedAiImage(null)
@@ -424,6 +429,7 @@ function LaunchWizardModal({
   const handleConfirmLaunch = async () => {
     setLaunching(true)
     setLaunchError("")
+    setLaunchErrorCode(null)
     try {
       const response = await fetch("/api/meta/create-campaign", {
         method: "POST",
@@ -436,7 +442,10 @@ function LaunchWizardModal({
         }),
       })
       const data = await response.json()
-      if (!response.ok) throw new Error(data.details || data.error || "Error al lanzar la campaña")
+      if (!response.ok) {
+        setLaunchErrorCode(data.code || null)
+        throw new Error(data.error || "Error al lanzar la campaña")
+      }
       setLaunchedMetaId(data.id || null)
       setLaunchedDone(true)
     } catch (err) {
@@ -450,6 +459,7 @@ function LaunchWizardModal({
     if (!launchedMetaId) return
     setActivating(true)
     setActivateError("")
+    setActivateErrorCode(null)
     try {
       const response = await fetch("/api/meta/toggle-campaign", {
         method: "POST",
@@ -457,7 +467,10 @@ function LaunchWizardModal({
         body: JSON.stringify({ campaignId: launchedMetaId, action: "ACTIVE" }),
       })
       const data = await response.json()
-      if (!response.ok) throw new Error(data.details || data.error || "Error al activar la campaña")
+      if (!response.ok) {
+        setActivateErrorCode(data.code || null)
+        throw new Error(data.error || "Error al activar la campaña")
+      }
       onLaunched({ ...suggestion, status: "launched", meta_campaign_id: launchedMetaId, meta_status: "ACTIVE" })
     } catch (err) {
       setActivateError(err instanceof Error ? err.message : "Hubo un error activando la campaña.")
@@ -505,7 +518,14 @@ function LaunchWizardModal({
               ¿Quieres activarla ahora para empezar a recibir resultados?
             </p>
             {launchedMetaId && <p className="text-gray-600 text-xs mb-4">ID de campaña: {launchedMetaId}</p>}
-            {activateError && <p className="text-red-400 text-xs mb-3">{activateError}</p>}
+            {activateError && (
+              <p className="text-red-400 text-xs mb-3">
+                {activateError}
+                {activateErrorCode === "meta_auth_expired" && (
+                  <> <a href="/dashboard-layout/settings" className="underline text-red-300 hover:text-red-200">Ir a Configuración</a></>
+                )}
+              </p>
+            )}
             <div className="flex gap-2 justify-center mt-4">
               <button
                 onClick={handleActivateNow}
@@ -600,6 +620,7 @@ function LaunchWizardModal({
                 />
                 {referencePhoto && (
                   <div className="flex items-center gap-2 mb-4">
+                    {/* eslint-disable-next-line @next/next/no-img-element -- blob: URL local (URL.createObjectURL), no un asset optimizable */}
                     <img src={referencePhoto.previewUrl} alt="Foto de referencia" className="w-10 h-10 object-cover rounded-lg" />
                     <p className="text-gray-500 text-xs">También usaremos esta foto como guía visual del estilo.</p>
                   </div>
@@ -658,6 +679,7 @@ function LaunchWizardModal({
                       }`}
                     >
                       <button onClick={() => setLightboxImage(url)} className="block w-full">
+                        {/* eslint-disable-next-line @next/next/no-img-element -- URL de imagen generada por IA (data URI/blob), no un asset optimizable */}
                         <img src={url} alt="Imagen generada" className="w-full h-80 object-cover" />
                       </button>
                       <button
@@ -740,6 +762,7 @@ function LaunchWizardModal({
               {isTestImage ? (
                 <div className="w-16 h-16 rounded-lg bg-white/10 flex-shrink-0 flex items-center justify-center text-xl">🧪</div>
               ) : thumbnail ? (
+                // eslint-disable-next-line @next/next/no-img-element -- URL de imagen generada por IA o subida (data URI/blob), no un asset optimizable
                 <img src={thumbnail} alt="Miniatura" className="w-16 h-16 object-cover rounded-lg flex-shrink-0" />
               ) : (
                 <div className="w-16 h-16 rounded-lg bg-white/10 flex-shrink-0" />
@@ -761,7 +784,14 @@ function LaunchWizardModal({
               <p className="text-gray-200 text-sm leading-relaxed">&ldquo;{suggestion.copy}&rdquo;</p>
             </div>
 
-            {launchError && <p className="text-red-400 text-xs">{launchError}</p>}
+            {launchError && (
+              <p className="text-red-400 text-xs">
+                {launchError}
+                {launchErrorCode === "meta_auth_expired" && (
+                  <> <a href="/dashboard-layout/settings" className="underline text-red-300 hover:text-red-200">Ir a Configuración</a></>
+                )}
+              </p>
+            )}
 
             <button
               onClick={handleConfirmLaunch}
@@ -799,6 +829,7 @@ function SuggestionCard({ suggestion, onUpdate, onLaunchClick }: { suggestion: S
   const [adjustError, setAdjustError] = useState("")
   const [togglingStatus, setTogglingStatus] = useState(false)
   const [toggleError, setToggleError] = useState("")
+  const [toggleErrorCode, setToggleErrorCode] = useState<string | null>(null)
 
   const objectiveInfo = objectiveLabels[suggestion.objective] || { label: suggestion.objective, color: "bg-gray-500/20 text-gray-300" }
   const launched = suggestion.status === "launched"
@@ -808,6 +839,7 @@ function SuggestionCard({ suggestion, onUpdate, onLaunchClick }: { suggestion: S
     if (!suggestion.meta_campaign_id) return
     setTogglingStatus(true)
     setToggleError("")
+    setToggleErrorCode(null)
     try {
       const nextAction = isActive ? "PAUSED" : "ACTIVE"
       const response = await fetch("/api/meta/toggle-campaign", {
@@ -816,7 +848,10 @@ function SuggestionCard({ suggestion, onUpdate, onLaunchClick }: { suggestion: S
         body: JSON.stringify({ campaignId: suggestion.meta_campaign_id, action: nextAction }),
       })
       const data = await response.json()
-      if (!response.ok) throw new Error(data.details || data.error || "Error al actualizar la campaña")
+      if (!response.ok) {
+        setToggleErrorCode(data.code || null)
+        throw new Error(data.error || "Error al actualizar la campaña")
+      }
       onUpdate({ ...suggestion, meta_status: data.status })
     } catch (err) {
       setToggleError(err instanceof Error ? err.message : "Hubo un error actualizando la campaña.")
@@ -880,15 +915,24 @@ function SuggestionCard({ suggestion, onUpdate, onLaunchClick }: { suggestion: S
           <span className="text-sm font-medium text-gray-300">
             {isActive ? "🟢 Activa" : "⏸️ Pausada"}
           </span>
-          <button
-            onClick={handleToggleStatus}
-            disabled={togglingStatus}
-            className={`px-3 py-1.5 rounded-lg text-sm font-medium disabled:opacity-50 transition-all active:scale-95 flex items-center gap-2 ${
-              isActive ? "bg-white/5 hover:bg-white/10 border border-white/10 text-gray-300" : "bg-emerald-600 hover:bg-emerald-700 text-white"
-            }`}
-          >
-            {togglingStatus ? <Spinner /> : isActive ? "⏸ Pausar" : "▶ Activar"}
-          </button>
+          {suggestion.stale ? (
+            <span
+              title="Esta campaña se lanzó con una cuenta de Meta que ya no está conectada"
+              className="px-3 py-1.5 rounded-lg text-xs font-medium bg-amber-500/10 border border-amber-500/20 text-amber-300"
+            >
+              De una conexión anterior
+            </span>
+          ) : (
+            <button
+              onClick={handleToggleStatus}
+              disabled={togglingStatus}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium disabled:opacity-50 transition-all active:scale-95 flex items-center gap-2 ${
+                isActive ? "bg-white/5 hover:bg-white/10 border border-white/10 text-gray-300" : "bg-emerald-600 hover:bg-emerald-700 text-white"
+              }`}
+            >
+              {togglingStatus ? <Spinner /> : isActive ? "⏸ Pausar" : "▶ Activar"}
+            </button>
+          )}
         </div>
       ) : (
         <div className="flex gap-2 mt-auto pt-2">
@@ -909,7 +953,14 @@ function SuggestionCard({ suggestion, onUpdate, onLaunchClick }: { suggestion: S
         </div>
       )}
 
-      {toggleError && <p className="text-red-400 text-xs">{toggleError}</p>}
+      {toggleError && (
+        <p className="text-red-400 text-xs">
+          {toggleError}
+          {toggleErrorCode === "meta_auth_expired" && (
+            <> <a href="/dashboard-layout/settings" className="underline text-red-300 hover:text-red-200">Ir a Configuración</a></>
+          )}
+        </p>
+      )}
 
       {adjustOpen && !launched && (
         <div className="bg-black/20 border border-white/10 rounded-xl p-3 space-y-2">
@@ -961,6 +1012,10 @@ export default function CampaignsPage() {
   }
 
   useEffect(() => {
+    // Carga inicial al montar: loadStatus() solo actualiza estado dentro de callbacks async
+    // después de un await (fetch), no de forma síncrona en el cuerpo del efecto — el patrón
+    // estándar de "cargar datos al montar", no la cascada de renders que la regla previene.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadStatus()
   }, [])
 

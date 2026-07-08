@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { MetaAssetSelector } from "@/components/meta-asset-selector"
 import { useMetaConnect } from "@/hooks/use-meta-connect"
 
@@ -47,6 +47,7 @@ const META_ERROR_MESSAGES: Record<string, string> = {
   not_configured: "La conexión con Meta Ads no está disponible en este momento.",
   popup_blocked: "El navegador bloqueó la ventana de conexión. Habilita las ventanas emergentes para este sitio e intenta de nuevo.",
   exception: "Ocurrió un error inesperado conectando con Meta.",
+  timeout: "La conexión con Meta está tardando demasiado. Cierra la ventana emergente e intenta de nuevo.",
 }
 
 interface OnboardingModalProps {
@@ -61,6 +62,23 @@ export function OnboardingModal({ open, initialStep = 1, onComplete }: Onboardin
   const [errors, setErrors] = useState<Partial<BusinessData>>({})
   const [saving, setSaving] = useState(false)
   const metaConnect = useMetaConnect()
+
+  // Autosave del paso 2: si el usuario cierra la pestaña/navegador sin hacer click en nada
+  // (el botón de cerrar del ítem 1 ya cubre la salida explícita), esto evita perder lo escrito.
+  // No incluye onboarding_completed para no marcar el onboarding como terminado prematuramente.
+  useEffect(() => {
+    if (step !== 2) return
+    const hasContent = data.business_name.trim() || data.industry || data.country || data.city.trim()
+    if (!hasContent) return
+    const timeout = setTimeout(() => {
+      fetch("/api/onboarding", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      }).catch(() => {})
+    }, 800)
+    return () => clearTimeout(timeout)
+  }, [data, step])
 
   if (!open) return null
 
@@ -96,6 +114,23 @@ export function OnboardingModal({ open, initialStep = 1, onComplete }: Onboardin
     setStep(4)
   }
 
+  // Botón de cerrar disponible en cualquier paso. Si el usuario ya escribió algo en el
+  // paso 2 lo guarda (mismo criterio que handleSkip); si no hay nada escrito (ej. cierra
+  // desde el paso 1) evita mandar campos vacíos que pisarían con null un perfil existente
+  // (mismo riesgo ya identificado en handleDismissError).
+  async function handleGlobalClose() {
+    if (saving || metaConnect.status === "connecting") return
+    setSaving(true)
+    const hasData = !!(data.business_name.trim() || data.industry || data.country || data.city.trim())
+    await fetch("/api/onboarding", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(hasData ? { ...data, onboarding_completed: true } : { onboarding_completed: true }),
+    })
+    setSaving(false)
+    onComplete()
+  }
+
   async function handleAssetSelectionConfirmed() {
     await fetch("/api/onboarding", {
       method: "POST",
@@ -128,7 +163,17 @@ export function OnboardingModal({ open, initialStep = 1, onComplete }: Onboardin
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-      <div className="w-full max-w-md bg-[#12121a] border border-white/10 rounded-2xl shadow-2xl shadow-black/50">
+      <div className="relative w-full max-w-md bg-[#12121a] border border-white/10 rounded-2xl shadow-2xl shadow-black/50">
+        {step < 4 && (
+          <button
+            onClick={handleGlobalClose}
+            disabled={saving || metaConnect.status === "connecting"}
+            aria-label="Cerrar"
+            className="absolute top-4 right-4 text-gray-500 hover:text-gray-300 disabled:opacity-30 disabled:cursor-not-allowed text-lg leading-none transition-colors z-10"
+          >
+            ✕
+          </button>
+        )}
         {step < 4 && (
           <div className="flex items-center justify-center gap-2 pt-7">
             {([1, 2, 3] as const).map((s) => (
@@ -167,6 +212,7 @@ export function OnboardingModal({ open, initialStep = 1, onComplete }: Onboardin
 
           {step === 2 && (
             <div className="space-y-5">
+              <button onClick={() => setStep(1)} className="text-gray-500 hover:text-white text-xs transition-colors">← Atrás</button>
               <div>
                 <h2 className="text-white text-xl font-bold mb-1">¿Cuál es tu negocio?</h2>
                 <p className="text-gray-400 text-sm">Esta información ayuda a la IA a personalizar tu estrategia.</p>
@@ -232,6 +278,13 @@ export function OnboardingModal({ open, initialStep = 1, onComplete }: Onboardin
 
           {showingMetaConnectPrompt && (
             <div className="text-center space-y-6">
+              <button
+                onClick={() => setStep(2)}
+                disabled={metaConnect.status === "connecting"}
+                className="text-gray-500 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed text-xs transition-colors"
+              >
+                ← Atrás
+              </button>
               <div className="flex justify-center">
                 <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-[#1877f2] to-[#0a5dc2] flex items-center justify-center shadow-lg shadow-blue-500/25">
                   <span className="text-white text-3xl font-bold leading-none">f</span>
@@ -268,8 +321,8 @@ export function OnboardingModal({ open, initialStep = 1, onComplete }: Onboardin
                 </button>
                 <button
                   onClick={handleSkip}
-                  disabled={saving}
-                  className="w-full py-2 text-gray-400 hover:text-gray-300 text-sm transition-colors"
+                  disabled={saving || metaConnect.status === "connecting"}
+                  className="w-full py-2 text-gray-400 hover:text-gray-300 disabled:opacity-30 disabled:cursor-not-allowed text-sm transition-colors"
                 >
                   Saltar por ahora
                 </button>
@@ -278,7 +331,7 @@ export function OnboardingModal({ open, initialStep = 1, onComplete }: Onboardin
           )}
 
           {step === 3 && metaConnect.status === "needs_selection" && (
-            <MetaAssetSelector onConfirm={handleAssetSelectionConfirmed} />
+            <MetaAssetSelector onConfirm={handleAssetSelectionConfirmed} onExpired={metaConnect.reset} />
           )}
 
           {step === 3 && metaConnect.status === "error" && (

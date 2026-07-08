@@ -29,14 +29,15 @@ export async function GET() {
 
     if (!response.ok) {
       const text = await response.text()
-      return NextResponse.json({ error: text }, { status: response.status })
+      console.error("Error GET leads (Supabase):", text)
+      return NextResponse.json({ error: "No se pudieron cargar los leads." }, { status: response.status })
     }
 
     const data = await response.json()
     return NextResponse.json(data)
   } catch (error) {
     console.error("Error GET leads:", error)
-    return NextResponse.json({ error: String(error) }, { status: 500 })
+    return NextResponse.json({ error: "No se pudieron cargar los leads." }, { status: 500 })
   }
 }
 
@@ -57,13 +58,15 @@ export async function POST(req: NextRequest) {
 
     if (!response.ok) {
       const text = await response.text()
-      return NextResponse.json({ error: text }, { status: response.status })
+      console.error("Error POST leads (Supabase):", text)
+      return NextResponse.json({ error: "No se pudo guardar el lead." }, { status: response.status })
     }
 
     const data = await response.json()
     return NextResponse.json(data)
   } catch (error) {
-    return NextResponse.json({ error: String(error) }, { status: 500 })
+    console.error("Error POST leads:", error)
+    return NextResponse.json({ error: "No se pudo guardar el lead." }, { status: 500 })
   }
 }
 
@@ -82,9 +85,16 @@ export async function PATCH(req: NextRequest) {
       }
     )
 
+    if (!response.ok) {
+      const text = await response.text()
+      console.error("Error PATCH leads (Supabase):", text)
+      return NextResponse.json({ error: "No se pudo actualizar el lead." }, { status: response.status })
+    }
+
     const data = await response.json()
     return NextResponse.json(data)
   } catch (error) {
-    return NextResponse.json({ error: String(error) }, { status: 500 })
+    console.error("Error PATCH leads:", error)
+    return NextResponse.json({ error: "No se pudo actualizar el lead." }, { status: 500 })
   }
 }

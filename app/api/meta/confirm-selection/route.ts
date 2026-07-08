@@ -23,7 +23,10 @@ export async function POST(req: NextRequest) {
   const pending = account?.pending_selection
 
   if (!account || !pending) {
-    return NextResponse.json({ error: "No hay una selección pendiente para este usuario" }, { status: 400 })
+    return NextResponse.json(
+      { error: "Tu selección expiró o ya fue usada. Reconecta tu cuenta de Meta desde cero.", code: "no_pending_selection" },
+      { status: 400 }
+    )
   }
 
   const chosenPage = pageId ? pending.pages.find((p) => p.id === pageId) : undefined

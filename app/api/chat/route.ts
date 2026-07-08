@@ -56,25 +56,30 @@ export async function POST(req: NextRequest) {
         const reader = response.body!.getReader()
         const decoder = new TextDecoder()
 
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
+        try {
+          while (true) {
+            const { done, value } = await reader.read()
+            if (done) break
 
-          const chunk = decoder.decode(value)
-          const lines = chunk.split("\n").filter((line) => line.startsWith("data: "))
+            const chunk = decoder.decode(value)
+            const lines = chunk.split("\n").filter((line) => line.startsWith("data: "))
 
-          for (const line of lines) {
-            const data = line.replace("data: ", "").trim()
-            if (data === "[DONE]") continue
-            try {
-              const parsed = JSON.parse(data)
-              if (parsed.type === "content_block_delta" && parsed.delta?.text) {
-                controller.enqueue(encoder.encode(parsed.delta.text))
-              }
-            } catch {}
+            for (const line of lines) {
+              const data = line.replace("data: ", "").trim()
+              if (data === "[DONE]") continue
+              try {
+                const parsed = JSON.parse(data)
+                if (parsed.type === "content_block_delta" && parsed.delta?.text) {
+                  controller.enqueue(encoder.encode(parsed.delta.text))
+                }
+              } catch {}
+            }
           }
+          controller.close()
+        } catch (error) {
+          console.error("Error leyendo el stream de Anthropic:", error)
+          controller.error(error)
         }
-        controller.close()
       },
     })
 

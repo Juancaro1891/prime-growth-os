@@ -19,6 +19,21 @@ export type MetaAccount = {
   pending_selection: { pages: MetaPage[]; adAccounts: MetaAdAccount[] } | null
 }
 
+// Único criterio de "conectado a Meta" para todo el proyecto — antes cada ruta usaba su propio
+// chequeo (solo access_token, access_token+ad_account_id, o ad_account_id+page_id) y podían
+// contradecirse entre sí sobre si un usuario está listo para generar/lanzar campañas.
+export function isMetaFullyConnected(
+  account: MetaAccount | null
+): account is MetaAccount & { access_token: string; ad_account_id: string; page_id: string } {
+  return !!(account?.access_token && account?.ad_account_id && account?.page_id)
+}
+
+// Detecta el error de token expirado/inválido de Meta (código 190, OAuthException) para poder
+// mostrar un mensaje específico ("reconecta tu cuenta") en vez de un error genérico.
+export function isMetaAuthError(metaError: { code?: number; type?: string } | null | undefined): boolean {
+  return metaError?.code === 190 || metaError?.type === "OAuthException"
+}
+
 export async function deleteMetaAccount(userId: string) {
   const url = getSupabaseUrl()
   const headers = getSupabaseServiceHeaders()

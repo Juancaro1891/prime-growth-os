@@ -18,9 +18,10 @@ type MetaAdAccount = {
 
 interface MetaAssetSelectorProps {
   onConfirm: () => void
+  onExpired?: () => void
 }
 
-export function MetaAssetSelector({ onConfirm }: MetaAssetSelectorProps) {
+export function MetaAssetSelector({ onConfirm, onExpired }: MetaAssetSelectorProps) {
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [pages, setPages] = useState<MetaPage[]>([])
@@ -60,7 +61,18 @@ export function MetaAssetSelector({ onConfirm }: MetaAssetSelectorProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ pageId, adAccountId }),
       })
-      if (!res.ok) throw new Error()
+      if (!res.ok) {
+        const body = await res.json().catch(() => null)
+        if (body?.code === "no_pending_selection") {
+          setConfirmError(body.error || "Tu selección expiró. Reconecta tu cuenta de Meta desde cero.")
+          setConfirming(false)
+          onExpired?.()
+          return
+        }
+        setConfirmError(body?.error || "No se pudo guardar tu selección. Intenta de nuevo.")
+        setConfirming(false)
+        return
+      }
       onConfirm()
     } catch {
       setConfirmError("No se pudo guardar tu selección. Intenta de nuevo.")

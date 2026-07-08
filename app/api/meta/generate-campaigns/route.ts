@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { auth } from "@clerk/nextjs/server"
-import { getMetaAccount } from "@/lib/meta"
+import { getMetaAccount, isMetaFullyConnected } from "@/lib/meta"
 import {
   getLatestBusinessAnalysis,
   getCampaignSuggestions,
@@ -21,7 +21,7 @@ export async function GET() {
     }
 
     const account = await getMetaAccount(userId)
-    const connected = !!account?.access_token
+    const connected = isMetaFullyConnected(account)
 
     if (!connected) {
       return NextResponse.json({ connected: false, businessName: null, hasAnalysis: false, suggestions: [] })
@@ -32,11 +32,19 @@ export async function GET() {
     // activarlas/pausarlas desde aquí — solo "Regenerar todo" (POST) sigue tocando únicamente las pending.
     const suggestions = await getCampaignSuggestions(userId)
 
+    // "stale": la campaña se lanzó bajo una cuenta de Meta distinta a la conectada actualmente
+    // (el usuario desconectó y conectó otra cuenta después de lanzarla) — no se puede activar/pausar
+    // con el token vigente, así que se marca para deshabilitar esas acciones en el frontend.
+    const suggestionsWithStale = suggestions.map((s) => ({
+      ...s,
+      stale: s.status === "launched" && !!s.ad_account_id && s.ad_account_id !== account.ad_account_id,
+    }))
+
     return NextResponse.json({
       connected: true,
       businessName: account?.business_name || account?.ad_account_name || null,
       hasAnalysis: !!analysis,
-      suggestions,
+      suggestions: suggestionsWithStale,
     })
   } catch (error) {
     console.error("Error en GET /api/meta/generate-campaigns (excepción):", error)
@@ -55,7 +63,7 @@ export async function POST() {
 
     const account = await getMetaAccount(userId)
 
-    if (!account?.access_token) {
+    if (!isMetaFullyConnected(account)) {
       return NextResponse.json(
         { error: "Cuenta de Meta no conectada", details: "Conecta tu cuenta de Meta Ads en /api/meta/auth antes de generar campañas" },
         { status: 404 }

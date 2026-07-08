@@ -79,6 +79,8 @@ function ProfileSection() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [saveError, setSaveError] = useState("")
+  const [errors, setErrors] = useState<Partial<Record<"business_name" | "industry" | "country" | "city", string>>>({})
   const [form, setForm] = useState({ business_name: "", industry: "", country: "", city: "" })
 
   useEffect(() => {
@@ -103,16 +105,34 @@ function ProfileSection() {
     load()
   }, [])
 
+  function validate() {
+    const e: Partial<Record<"business_name" | "industry" | "country" | "city", string>> = {}
+    if (!form.business_name.trim()) e.business_name = "Requerido"
+    if (!form.industry) e.industry = "Requerido"
+    if (!form.country) e.country = "Requerido"
+    if (!form.city.trim()) e.city = "Requerido"
+    setErrors(e)
+    return Object.keys(e).length === 0
+  }
+
   async function handleSave() {
+    if (!validate()) return
     setSaving(true)
     setSaved(false)
-    await fetch("/api/onboarding", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(form),
-    })
-    setSaving(false)
-    setSaved(true)
+    setSaveError("")
+    try {
+      const res = await fetch("/api/onboarding", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form),
+      })
+      if (!res.ok) throw new Error()
+      setSaved(true)
+    } catch {
+      setSaveError("No se pudieron guardar los cambios. Intenta de nuevo.")
+    } finally {
+      setSaving(false)
+    }
   }
 
   const inputClass =
@@ -132,6 +152,7 @@ function ProfileSection() {
           onChange={(e) => setForm({ ...form, business_name: e.target.value })}
           className={inputClass}
         />
+        {errors.business_name && <p className="text-red-400 text-xs mt-1">{errors.business_name}</p>}
       </div>
       <div>
         <label className="block text-gray-300 text-sm font-medium mb-1.5">Industria</label>
@@ -139,6 +160,7 @@ function ProfileSection() {
           <option value="" disabled>Selecciona tu industria</option>
           {INDUSTRIES.map((i) => <option key={i} value={i}>{i}</option>)}
         </select>
+        {errors.industry && <p className="text-red-400 text-xs mt-1">{errors.industry}</p>}
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div>
@@ -147,10 +169,12 @@ function ProfileSection() {
             <option value="" disabled>País</option>
             {COUNTRIES.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
+          {errors.country && <p className="text-red-400 text-xs mt-1">{errors.country}</p>}
         </div>
         <div>
           <label className="block text-gray-300 text-sm font-medium mb-1.5">Ciudad</label>
           <input type="text" value={form.city} onChange={(e) => setForm({ ...form, city: e.target.value })} className={inputClass} />
+          {errors.city && <p className="text-red-400 text-xs mt-1">{errors.city}</p>}
         </div>
       </div>
       <div className="flex items-center gap-3">
@@ -162,6 +186,7 @@ function ProfileSection() {
           {saving ? "Guardando..." : "Guardar cambios"}
         </button>
         {saved && !saving && <span className="text-emerald-400 text-xs">✓ Guardado</span>}
+        {saveError && !saving && <span className="text-red-400 text-xs">{saveError}</span>}
       </div>
     </div>
   )
@@ -281,6 +306,7 @@ function NotificationsSection() {
   const [prefs, setPrefs] = useState<NotificationPreferences>(DEFAULT_NOTIFICATION_PREFERENCES)
   const [loading, setLoading] = useState(true)
   const [savingKey, setSavingKey] = useState<string | null>(null)
+  const [toggleError, setToggleError] = useState("")
 
   useEffect(() => {
     async function load() {
@@ -300,15 +326,24 @@ function NotificationsSection() {
   }, [])
 
   async function handleToggle(key: keyof NotificationPreferences) {
+    const previous = prefs
     const next = { ...prefs, [key]: !prefs[key] }
     setPrefs(next)
     setSavingKey(key)
-    await fetch("/api/onboarding", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ notification_preferences: next }),
-    })
-    setSavingKey(null)
+    setToggleError("")
+    try {
+      const res = await fetch("/api/onboarding", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notification_preferences: next }),
+      })
+      if (!res.ok) throw new Error()
+    } catch {
+      setPrefs(previous)
+      setToggleError("No se pudo guardar el cambio. Intenta de nuevo.")
+    } finally {
+      setSavingKey(null)
+    }
   }
 
   if (loading) return <p className="text-gray-500 text-sm">Cargando...</p>
@@ -330,6 +365,7 @@ function NotificationsSection() {
           <Toggle checked={prefs[item.key]} onChange={() => handleToggle(item.key)} disabled={savingKey === item.key} />
         </div>
       ))}
+      {toggleError && <p className="text-red-400 text-xs">{toggleError}</p>}
       <p className="text-gray-600 text-xs pt-2 border-t border-white/5">
         Estas preferencias se guardan, pero por ahora la plataforma todavía no envía notificaciones automáticas.
       </p>

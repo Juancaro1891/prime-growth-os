@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@clerk/nextjs/server"
-import { META_GRAPH_BASE, getMetaAccount } from "@/lib/meta"
+import { META_GRAPH_BASE, getMetaAccount, isMetaFullyConnected, isMetaAuthError } from "@/lib/meta"
 import { getCampaignSuggestion, updateCampaignSuggestion } from "@/lib/campaign-suggestions"
 
 export async function POST(req: NextRequest) {
@@ -31,10 +31,11 @@ export async function POST(req: NextRequest) {
       ad_account_id: account?.ad_account_id || null,
     })
 
-    if (!account?.access_token || !account.ad_account_id) {
-      console.error("create-campaign: cuenta de Meta no conectada o sin ad_account_id", {
+    if (!isMetaFullyConnected(account)) {
+      console.error("create-campaign: cuenta de Meta no conectada o incompleta", {
         hasAccessToken: !!account?.access_token,
         ad_account_id: account?.ad_account_id || null,
+        page_id: account?.page_id || null,
       })
       return NextResponse.json(
         { error: "Cuenta de Meta no conectada", details: "Conecta tu cuenta de Meta Ads en /api/meta/auth antes de crear campañas" },
@@ -91,21 +92,23 @@ export async function POST(req: NextRequest) {
       })
 
       const metaError = result?.error
-      const details = metaError
-        ? [
-            metaError.message,
-            metaError.error_user_msg,
-            metaError.code != null ? `code: ${metaError.code}` : null,
-            metaError.error_subcode != null ? `subcode: ${metaError.error_subcode}` : null,
-            metaError.fbtrace_id ? `fbtrace_id: ${metaError.fbtrace_id}` : null,
-          ].filter(Boolean).join(" — ")
-        : rawText || `Meta devolvió HTTP ${response.status} sin detalle`
+      if (isMetaAuthError(metaError)) {
+        return NextResponse.json(
+          { error: "Tu conexión con Meta expiró. Reconéctala para continuar.", code: "meta_auth_expired" },
+          { status: 401 }
+        )
+      }
 
-      return NextResponse.json({ error: "Error al crear la campaña", details, metaError: metaError ?? null }, { status: 500 })
+      return NextResponse.json({ error: "No se pudo crear la campaña en Meta Ads. Intenta de nuevo." }, { status: 500 })
     }
 
     if (suggestionId) {
-      await updateCampaignSuggestion(suggestionId, userId, { status: "launched", meta_campaign_id: result?.id, meta_status: body.status })
+      await updateCampaignSuggestion(suggestionId, userId, {
+        status: "launched",
+        meta_campaign_id: result?.id,
+        meta_status: body.status,
+        ad_account_id: account.ad_account_id,
+      })
     }
 
     return NextResponse.json({ id: result?.id })

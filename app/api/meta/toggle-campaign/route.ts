@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@clerk/nextjs/server"
-import { getMetaAccount, updateCampaignStatus } from "@/lib/meta"
+import { getMetaAccount, updateCampaignStatus, isMetaFullyConnected, isMetaAuthError } from "@/lib/meta"
 import { getCampaignSuggestionByMetaCampaignId, updateCampaignSuggestion } from "@/lib/campaign-suggestions"
 
 const VALID_ACTIONS = ["ACTIVE", "PAUSED"]
@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
 
     const account = await getMetaAccount(userId)
 
-    if (!account?.access_token) {
+    if (!isMetaFullyConnected(account)) {
       return NextResponse.json({ error: "Cuenta de Meta no conectada" }, { status: 404 })
     }
 
@@ -37,8 +37,15 @@ export async function POST(req: NextRequest) {
 
     if (!response.ok) {
       console.error("Error actualizando estado de campaña en Meta:", JSON.stringify(result))
-      const details = result?.error?.message || `Meta devolvió HTTP ${response.status} sin detalle`
-      return NextResponse.json({ error: "Error al actualizar la campaña", details }, { status: 500 })
+
+      if (isMetaAuthError(result?.error)) {
+        return NextResponse.json(
+          { error: "Tu conexión con Meta expiró. Reconéctala para continuar.", code: "meta_auth_expired" },
+          { status: 401 }
+        )
+      }
+
+      return NextResponse.json({ error: "No se pudo actualizar la campaña. Intenta de nuevo." }, { status: 500 })
     }
 
     await updateCampaignSuggestion(suggestion.id, userId, { meta_status: action })

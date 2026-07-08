@@ -193,13 +193,10 @@ export async function POST(req: NextRequest) {
 
     if (!response.ok) {
       // Log completo (no solo el .message) para poder diagnosticar cualquier tipo de error: moderación,
-      // tamaño inválido, rate limit, cuota agotada, modelo no disponible, etc.
+      // tamaño inválido, rate limit, cuota agotada, modelo no disponible, etc. El detalle crudo de OpenAI
+      // se queda solo en logs del servidor — al cliente solo le llega un mensaje genérico en español.
       console.error("OpenAI API error completo:", JSON.stringify(result))
-      const err = (result as { error?: { message?: string; code?: string; type?: string } } | null)?.error
-      const details = err?.message
-        ? `${err.message}${err.code ? ` (code: ${err.code})` : ""}`
-        : `OpenAI devolvió HTTP ${response.status} sin detalle`
-      return NextResponse.json({ error: "Error al generar la imagen", details }, { status: 500 })
+      return NextResponse.json({ error: "No se pudo generar la imagen. Intenta de nuevo." }, { status: 500 })
     }
 
     const b64 = result?.data?.[0]?.b64_json
@@ -212,7 +209,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ url: `data:image/png;base64,${b64}` })
   } catch (error) {
     console.error("Error generando imagen (excepción):", error)
-    const details = error instanceof Error ? error.message : String(error)
-    return NextResponse.json({ error: "Error al generar la imagen", details }, { status: 500 })
+    return NextResponse.json({ error: "No se pudo generar la imagen. Intenta de nuevo." }, { status: 500 })
   }
 }

@@ -18,6 +18,9 @@ export type CampaignSuggestion = {
   // es la etapa del flujo interno ("pending"/"launched") y ya la usa SuggestionCard para decidir si
   // mostrar los botones de lanzar/ajustar — reusar esa columna para ACTIVE/PAUSED rompería ese check.
   meta_status: string | null
+  // ad_account_id de la conexión de Meta vigente al momento del lanzamiento. Permite detectar
+  // campañas "huérfanas" cuando el usuario desconecta y conecta una cuenta de Meta distinta.
+  ad_account_id: string | null
   created_at: string
 }
 

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { auth } from "@clerk/nextjs/server"
-import { META_GRAPH_BASE, getMetaAccount } from "@/lib/meta"
+import { META_GRAPH_BASE, getMetaAccount, isMetaFullyConnected, isMetaAuthError } from "@/lib/meta"
 
 export async function GET() {
   try {
@@ -12,7 +12,7 @@ export async function GET() {
 
     const account = await getMetaAccount(userId)
 
-    if (!account?.access_token || !account.ad_account_id) {
+    if (!isMetaFullyConnected(account)) {
       return NextResponse.json(
         { error: "Cuenta de Meta no conectada", details: "Conecta tu cuenta de Meta Ads en /api/meta/auth antes de ver campañas" },
         { status: 404 }
@@ -28,8 +28,15 @@ export async function GET() {
 
     if (!response.ok) {
       console.error("Error listando campañas de Meta:", JSON.stringify(result))
-      const details = result?.error?.message || `Meta devolvió HTTP ${response.status} sin detalle`
-      return NextResponse.json({ error: "Error al listar campañas", details }, { status: 500 })
+
+      if (isMetaAuthError(result?.error)) {
+        return NextResponse.json(
+          { error: "Tu conexión con Meta expiró. Reconéctala para continuar.", code: "meta_auth_expired" },
+          { status: 401 }
+        )
+      }
+
+      return NextResponse.json({ error: "No se pudieron cargar tus campañas de Meta Ads. Intenta de nuevo." }, { status: 500 })
     }
 
     return NextResponse.json({ campaigns: result?.data || [] })

@@ -130,7 +130,7 @@ export default function WhatsAppPage() {
                 <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-3 mx-2">
                   <p className="text-emerald-300 text-xs font-medium mb-1">🤖 La IA está redactando respuesta...</p>
                   <p className="text-emerald-200/60 text-xs">
-                    "¡Excelente elección Carlos! Nuestro plan anual tiene un valor de $900.000 COP — eso es solo $75.000 al mes, un 37% de descuento vs el plan mensual. Además incluye: acceso ilimitado 6am-10pm, todos los equipos, clases grupales y valoración física inicial. ¿Te gustaría venir esta semana a conocer las instalaciones? 🏋️"
+                    &ldquo;¡Excelente elección Carlos! Nuestro plan anual tiene un valor de $900.000 COP — eso es solo $75.000 al mes, un 37% de descuento vs el plan mensual. Además incluye: acceso ilimitado 6am-10pm, todos los equipos, clases grupales y valoración física inicial. ¿Te gustaría venir esta semana a conocer las instalaciones? 🏋️&rdquo;
                   </p>
                 </div>
               )}
